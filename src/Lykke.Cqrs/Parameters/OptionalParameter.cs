@@ -2,7 +2,7 @@
 {
     internal class OptionalParameter<T> : OptionalParameterBase
     {
-        public OptionalParameter(string name,T value)
+        public OptionalParameter(string name, T value)
         {
             Name = name;
             Value = value;

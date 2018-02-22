@@ -49,7 +49,12 @@ namespace Lykke.Cqrs
         public void Wire(string fromBoundedContext,object o, params OptionalParameterBase[] parameters)
         {
             //TODO: decide whet to pass as context here
-            Wire(fromBoundedContext, o, null, null, parameters);
+            Wire(
+                fromBoundedContext,
+                o,
+                null,
+                null,
+                parameters);
         }
 
         public void Wire(
@@ -91,7 +96,7 @@ namespace Lykke.Cqrs
             if (batchManager != null && m_ApplyBatchesThread.ThreadState == ThreadState.Unstarted && batchManager.ApplyTimeout != 0)
                 m_ApplyBatchesThread.Start();
 
-            var batchContextParameter = new ExpressionParameter(null,batchContextType);
+            var batchContextParameter = new ExpressionParameter(null, batchContextType);
             parameters = parameters.Concat(new OptionalParameterBase[]
             {
                 new OptionalParameter<string>("boundedContext", fromBoundedContext)
@@ -127,23 +132,33 @@ namespace Lykke.Cqrs
             {
                 var eventType = method.isBatch ? method.eventType.GetElementType() : method.eventType;
                 var key = new EventOrigin(fromBoundedContext, eventType);
-                List<Tuple<Func<object[],object, CommandHandlingResult[]>, BatchManager>> handlersList;
+                List<Tuple<Func<object[], object, CommandHandlingResult[]>, BatchManager>> handlersList;
                 if (!m_Handlers.TryGetValue(key, out handlersList))
                 {
                     handlersList = new List<Tuple<Func<object[], object, CommandHandlingResult[]>, BatchManager>>();
                     m_Handlers.Add(key, handlersList);
                 }
 
-                var notInjectableParameters = method.callParameters.Where(p => p.optionalParameter == null).Select(p =>p.parameter.ParameterType+" "+p.parameter.Name).ToArray();
+                var notInjectableParameters = method.callParameters
+                    .Where(p => p.optionalParameter == null)
+                    .Select(p => p.parameter.ParameterType + " " + p.parameter.Name)
+                    .ToArray();
                 if(notInjectableParameters.Length>0)
-                    throw new InvalidOperationException(string.Format("{0} type can not be registered as event handler. Method {1} contains non injectable parameters:{2}",
-                        o.GetType().Name,
-                        method.method,
-                        string.Join(", ", notInjectableParameters)));
+                    throw new InvalidOperationException(
+                        $"{o.GetType().Name} type can not be registered as event handler. Method {method.method} contains non injectable parameters:{string.Join(", ", notInjectableParameters)}");
 
                 var handler = method.isBatch
-                    ? CreateBatchHandler(eventType, o, method.callParameters.Select(p => p.optionalParameter), batchContextParameter)
-                    : CreateHandler(eventType, o, method.callParameters.Select(p => p.optionalParameter), method.returnsResult, batchContextParameter);
+                    ? CreateBatchHandler(
+                        eventType,
+                        o,
+                        method.callParameters.Select(p => p.optionalParameter),
+                        batchContextParameter)
+                    : CreateHandler(
+                        eventType,
+                        o,
+                        method.callParameters.Select(p => p.optionalParameter),
+                        method.returnsResult,
+                        batchContextParameter);
 
                 handlersList.Add(Tuple.Create(handler, batchManager ?? m_DefaultBatchManager));
             }
@@ -205,7 +220,9 @@ namespace Lykke.Cqrs
                 .Concat(optionalParameters.Select(p => p.ValueExpression))
                 .ToArray();
 
-            var callHandler = Expression.Call(Expression.Call(Expression.Constant(o), "Handle", null, handleParams), "Wait", null);
+            var taskCall = Expression.Call(Expression.Constant(o), "Handle", null, handleParams);
+            var awaiterCall = Expression.Call(taskCall, "GetAwaiter", null, null);
+            var callHandler = Expression.Call(awaiterCall, "GetResult", null, null);
 
             var okResult = Expression.Constant(new CommandHandlingResult { Retry = false, RetryDelay = 0 });
             var failResult = Expression.Constant(new CommandHandlingResult { Retry = true, RetryDelay = m_FailedEventRetryDelay });

@@ -15,7 +15,7 @@ namespace Lykke.Cqrs
     internal class CommandDispatcher : IDisposable
     {
         private readonly Dictionary<Type, Func<object, Endpoint, string, CommandHandlingResult>> m_Handlers =
-            new Dictionary<Type, Func<object, Endpoint,string, CommandHandlingResult>>();
+            new Dictionary<Type, Func<object, Endpoint, string, CommandHandlingResult>>();
         private readonly string m_BoundedContext;
         private readonly ILog _log;
 
@@ -32,6 +32,7 @@ namespace Lykke.Cqrs
         {
             if (o == null)
                 throw new ArgumentNullException("o");
+
             parameters = parameters
                 .Concat(new OptionalParameterBase[] { new OptionalParameter<string>("boundedContext", m_BoundedContext) })
                 .ToArray();
@@ -44,7 +45,7 @@ namespace Lykke.Cqrs
                 .Select(m => new
                 {
                     method = m,
-                    returnsResult=m.ReturnType==typeof(Task<CommandHandlingResult>),
+                    returnsResult = m.ReturnType == typeof(Task<CommandHandlingResult>),
                     commandType = m.GetParameters().First().ParameterType,
                     callParameters = m.GetParameters().Skip(1).Select(p => new
                     {
@@ -81,12 +82,12 @@ namespace Lykke.Cqrs
             bool returnsResult)
         {
             var isRoutedCommandHandler = commandType.IsGenericType && commandType.GetGenericTypeDefinition() == typeof (RoutedCommand<>);
-            Type handledType;
             var command = Expression.Parameter(typeof(object), "command");
             var endpoint = Expression.Parameter(typeof(Endpoint), "endpoint");
             var route = Expression.Parameter(typeof(string), "route");
 
             Expression commandParameter;
+            Type handledType;
             if (!isRoutedCommandHandler)
             {
                 commandParameter = Expression.Convert(command, commandType);
@@ -98,6 +99,11 @@ namespace Lykke.Cqrs
                 var ctor = commandType.GetConstructor(new[] { handledType, typeof(Endpoint) ,typeof(string)});
                 commandParameter = Expression.New(ctor, Expression.Convert(command, handledType), endpoint, route);
             }
+
+            Func<object, Endpoint, string, CommandHandlingResult> handler;
+            if (m_Handlers.TryGetValue(handledType, out handler))
+                throw new InvalidOperationException(
+                    $"Only one handler per command is allowed. Command {commandType} handler is already registered in bound context {m_BoundedContext}. Can not register {o} as handler for it");
 
             // prepare variables expressions
             var variables = optionalParameters
@@ -112,23 +118,28 @@ namespace Lykke.Cqrs
                      ? (Expression)variables[p.Key.Name]
                      : (Expression)Expression.Constant(p.Value, p.Key.ParameterType))).ToArray();
 
+            var taskCall = Expression.Call(Expression.Constant(o), "Handle", null, parameters);
+            var awaiterCall = Expression.Call(taskCall, "GetAwaiter", null, null);
+            var resultCall = Expression.Call(awaiterCall, "GetResult", null, null);
+
             var disposableType = typeof (IDisposable);
             var call = Expression.Block(
                  variables.Values.AsEnumerable(), //declare variables to populate from func factoreis
                  variables
                      .Select(p => Expression.Assign(p.Value, InvokeFunc(optionalParameters.Single(x => x.Key.Name == p.Key).Value))) // invoke func and assign result to variable
                      .Cast<Expression>()
-                     .Concat(new[] {
-                        Expression.TryFinally(
-                            Expression.Property(Expression.Call(Expression.Constant(o), "Handle", null, parameters), "Result", null),
-                            Expression.Block(variables.Select( //dispose variable if disposable and not null
-                                v => Expression.IfThen(
-                                        Expression.And(Expression.NotEqual(v.Value, Expression.Constant(null)), Expression.TypeIs(v.Value, disposableType)),
-                                        Expression.Call(Expression.Convert(v.Value, disposableType) , disposableType.GetMethod("Dispose"))
-                             ))
-                      .Cast<Expression>().DefaultIfEmpty(Expression.Empty())))
-                     })
-                 );
+                     .Concat(new[]
+                         {
+                            Expression.TryFinally(
+                                resultCall,
+                                Expression.Block(variables
+                                    .Select(v =>
+                                        Expression.IfThen( //dispose variable if disposable and not null
+                                            Expression.And(Expression.NotEqual(v.Value, Expression.Constant(null)), Expression.TypeIs(v.Value, disposableType)),
+                                            Expression.Call(Expression.Convert(v.Value, disposableType) , disposableType.GetMethod("Dispose"))))
+                                    .Cast<Expression>()
+                                    .DefaultIfEmpty(Expression.Empty())))
+                         }));
 
             Expression<Func<object, Endpoint, string, CommandHandlingResult>> lambda;
             if (returnsResult)
@@ -137,23 +148,13 @@ namespace Lykke.Cqrs
             }
             else
             {
-                LabelTarget returnTarget = Expression.Label(typeof(Task<CommandHandlingResult>));
-                var returnLabel = Expression.Label(returnTarget,Expression.Constant(new CommandHandlingResult { Retry = false, RetryDelay = 0 })); 
-                var block = Expression.Block(
-                    call,
-                    returnLabel);
+                var returnLabel = Expression.Label(
+                    Expression.Label(typeof(Task<CommandHandlingResult>)),
+                    Expression.Constant(new CommandHandlingResult { Retry = false, RetryDelay = 0 })); 
+                var block = Expression.Block(call, returnLabel);
                 lambda = (Expression<Func<object, Endpoint, string, CommandHandlingResult>>)Expression.Lambda(block, command, endpoint,route);
             }
 
-            Func<object, Endpoint, string, CommandHandlingResult> handler;
-            if (m_Handlers.TryGetValue(handledType, out handler))
-            {
-                throw new InvalidOperationException(string.Format(
-                    "Only one handler per command is allowed. Command {0} handler is already registered in bound context {1}. Can not register {2} as handler for it",
-                    commandType,
-                    m_BoundedContext,
-                    o));
-            }
             m_Handlers.Add(handledType, lambda.Compile());
         }
 
