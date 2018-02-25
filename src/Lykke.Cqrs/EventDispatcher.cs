@@ -6,6 +6,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Runtime.CompilerServices;
 using Common.Log;
 using Lykke.Messaging.Contract;
 using ThreadState = System.Threading.ThreadState;
@@ -14,14 +15,16 @@ namespace Lykke.Cqrs
 {
     internal class EventDispatcher : IDisposable
     {
-        readonly Dictionary<EventOrigin, List<Tuple<Func<object[],object, CommandHandlingResult[]>,BatchManager>>> m_Handlers =
+        private readonly Dictionary<EventOrigin, List<Tuple<Func<object[],object, CommandHandlingResult[]>,BatchManager>>> m_Handlers =
             new Dictionary<EventOrigin, List<Tuple<Func<object[],object, CommandHandlingResult[]>, BatchManager>>>();
         private readonly ILog _log;
         private readonly string m_BoundedContext;
-        internal static long m_FailedEventRetryDelay = 60000;
-        readonly ManualResetEvent m_Stop = new ManualResetEvent(false);
+        private readonly ManualResetEvent m_Stop = new ManualResetEvent(false);
         private readonly Thread m_ApplyBatchesThread;
         private readonly BatchManager m_DefaultBatchManager;
+        private readonly MethodInfo _getAwaiterInfo;
+
+        internal static long m_FailedEventRetryDelay = 60000;
 
         public EventDispatcher(ILog log, string boundedContext)
         {
@@ -36,6 +39,10 @@ namespace Lykke.Cqrs
                 }
             });
             m_ApplyBatchesThread.Name = string.Format("'{0}' bounded context batch event processing thread",boundedContext);
+
+            var taskMethods = typeof(Task<CommandHandlingResult>).GetMethods(BindingFlags.Public | BindingFlags.Instance);
+            var awaiterResultType = typeof(TaskAwaiter<CommandHandlingResult>);
+            _getAwaiterInfo = taskMethods.First(m => m.Name == "GetAwaiter" && m.ReturnType == awaiterResultType);
         }
 
         private void ApplyBatches(bool force = false)
@@ -46,7 +53,7 @@ namespace Lykke.Cqrs
             }
         }
 
-        public void Wire(string fromBoundedContext,object o, params OptionalParameterBase[] parameters)
+        public void Wire(string fromBoundedContext, object o, params OptionalParameterBase[] parameters)
         {
             //TODO: decide whet to pass as context here
             Wire(
@@ -221,7 +228,9 @@ namespace Lykke.Cqrs
                 .ToArray();
 
             var taskCall = Expression.Call(Expression.Constant(o), "Handle", null, handleParams);
-            var awaiterCall = Expression.Call(taskCall, "GetAwaiter", null, null);
+            var awaiterCall = returnsResult
+                ? Expression.Call(taskCall, _getAwaiterInfo)
+                : Expression.Call(taskCall, "GetAwaiter", null, null);
             var callHandler = Expression.Call(awaiterCall, "GetResult", null, null);
 
             var okResult = Expression.Constant(new CommandHandlingResult { Retry = false, RetryDelay = 0 });

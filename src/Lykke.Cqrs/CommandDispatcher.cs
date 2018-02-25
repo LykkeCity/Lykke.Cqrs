@@ -4,6 +4,7 @@ using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Threading.Tasks;
+using System.Runtime.CompilerServices;
 using Common;
 using Common.Log;
 using Lykke.Messaging.Contract;
@@ -18,6 +19,7 @@ namespace Lykke.Cqrs
             new Dictionary<Type, Func<object, Endpoint, string, CommandHandlingResult>>();
         private readonly string m_BoundedContext;
         private readonly ILog _log;
+        private readonly MethodInfo _getAwaiterInfo;
 
         private long m_FailedCommandRetryDelay;
 
@@ -26,6 +28,10 @@ namespace Lykke.Cqrs
             _log = log;
             m_FailedCommandRetryDelay = failedCommandRetryDelay;
             m_BoundedContext = boundedContext;
+
+            var taskMethods = typeof(Task<CommandHandlingResult>).GetMethods(BindingFlags.Public | BindingFlags.Instance);
+            var awaiterResultType = typeof(TaskAwaiter<CommandHandlingResult>);
+            _getAwaiterInfo = taskMethods.First(m => m.Name == "GetAwaiter" && m.ReturnType == awaiterResultType);
         }
 
         public void Wire(object o, params OptionalParameterBase[] parameters)
@@ -107,8 +113,7 @@ namespace Lykke.Cqrs
 
             // prepare variables expressions
             var variables = optionalParameters
-                 .Where(p => p.Value != null)
-                 .Where(p => IsFunc(p.Value.GetType()))
+                 .Where(p => p.Value != null && IsFunc(p.Value.GetType()))
                  .ToDictionary(p => p.Key.Name, p => Expression.Variable(p.Key.ParameterType, p.Key.Name));
 
             //prepare parameters expression to make handle call
@@ -119,7 +124,9 @@ namespace Lykke.Cqrs
                      : (Expression)Expression.Constant(p.Value, p.Key.ParameterType))).ToArray();
 
             var taskCall = Expression.Call(Expression.Constant(o), "Handle", null, parameters);
-            var awaiterCall = Expression.Call(taskCall, "GetAwaiter", null, null);
+            var awaiterCall = returnsResult
+                ? Expression.Call(taskCall, _getAwaiterInfo)
+                : Expression.Call(taskCall, "GetAwaiter", null, null);
             var resultCall = Expression.Call(awaiterCall, "GetResult", null, null);
 
             var disposableType = typeof (IDisposable);
