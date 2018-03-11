@@ -288,7 +288,7 @@ namespace Lykke.Cqrs
             }
         }
 
-        internal void PublishEvent(object @event, string boundedContext)
+        public void PublishEvent(object @event, string boundedContext)
         {
             if (@event == null)
                 throw new ArgumentNullException("event");
