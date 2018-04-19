@@ -15,8 +15,8 @@ namespace Lykke.Cqrs
 {
     internal class EventDispatcher : IDisposable
     {
-        private readonly Dictionary<EventOrigin, List<Tuple<Func<object[],object, CommandHandlingResult[]>,BatchManager>>> m_Handlers =
-            new Dictionary<EventOrigin, List<Tuple<Func<object[],object, CommandHandlingResult[]>, BatchManager>>>();
+        private readonly Dictionary<EventOrigin, List<Tuple<Func<object[], object, CommandHandlingResult[]>, BatchManager>>> m_Handlers =
+            new Dictionary<EventOrigin, List<Tuple<Func<object[], object, CommandHandlingResult[]>, BatchManager>>>();
         private readonly ILog _log;
         private readonly string m_BoundedContext;
         private readonly ManualResetEvent m_Stop = new ManualResetEvent(false);
@@ -184,7 +184,7 @@ namespace Lykke.Cqrs
             var eventsListType = typeof(List<>).MakeGenericType(eventType);
             var list = Expression.Variable(eventsListType, "list");
             var @event = Expression.Variable(typeof(object), "@event");
-            var callParameters=new []{events,batchContext.Parameter};
+            var callParameters = new []{events,batchContext.Parameter};
 
             var handleParams = new Expression[] { Expression.Call(list, eventsListType.GetMethod("ToArray")) }
                 .Concat(optionalParameters.Select(p => p.ValueExpression))
@@ -221,7 +221,7 @@ namespace Lykke.Cqrs
             var result = Expression.Variable(typeof(List<CommandHandlingResult>), "result");
             var @event = Expression.Variable(typeof(object), "@event");
 
-            var callParameters = new []{events,batchContext.Parameter};
+            var callParameters = new []{events, batchContext.Parameter};
 
             var handleParams = new Expression[] { Expression.Convert(@event, eventType) }
                 .Concat(optionalParameters.Select(p => p.ValueExpression))
@@ -230,12 +230,25 @@ namespace Lykke.Cqrs
             var taskCall = Expression.Call(Expression.Constant(o), "Handle", null, handleParams);
             var awaiterCall = returnsResult
                 ? Expression.Call(taskCall, _getAwaiterInfo)
-                : Expression.Call(taskCall, "GetAwaiter", null, null);
-            var callHandler = Expression.Call(awaiterCall, "GetResult", null, null);
+                : Expression.Call(taskCall, "GetAwaiter", null);
+            var callHandler = Expression.Call(awaiterCall, "GetResult", null);
 
             var okResult = Expression.Constant(new CommandHandlingResult { Retry = false, RetryDelay = 0 });
             var failResult = Expression.Constant(new CommandHandlingResult { Retry = true, RetryDelay = m_FailedEventRetryDelay });
-            
+
+            var exceptionParam = Expression.Parameter(typeof(Exception));
+            var exceptionHandleCall = Expression.Block(
+                Expression.Call(result, typeof(List<CommandHandlingResult>).GetMethod("Add"), failResult),
+                //LogExtensions.WriteError(this ILog log, string process, object context, Exception exception = null, DateTime? dateTime = null)
+                Expression.Call(
+                    typeof(LogExtensions).GetMethod("WriteError"),
+                    Expression.Constant(_log),
+                    Expression.Constant(o.GetType().Name),
+                    Expression.Constant(eventType.GetType().Name),
+                    exceptionParam,
+                    Expression.Constant(null))
+                );
+
             Expression registerResult  = Expression.TryCatch(
                 Expression.Block(
                     typeof(void),
@@ -243,10 +256,7 @@ namespace Lykke.Cqrs
                         ?(Expression)Expression.Call(result, typeof(List<CommandHandlingResult>).GetMethod("Add"), callHandler)
                         :(Expression)Expression.Block(callHandler, Expression.Call(result, typeof(List<CommandHandlingResult>).GetMethod("Add"), okResult))
                     ),
-                Expression.Catch(
-                    typeof(Exception),
-                     Expression.Call(result, typeof(List<CommandHandlingResult>).GetMethod("Add"), failResult)
-                    )
+                Expression.Catch(exceptionParam, exceptionHandleCall)
                 );
 
             var create = Expression.Block(
