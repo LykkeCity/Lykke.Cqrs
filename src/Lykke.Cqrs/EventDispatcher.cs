@@ -245,8 +245,7 @@ namespace Lykke.Cqrs
                     Expression.Constant(_log),
                     Expression.Constant(o.GetType().Name),
                     Expression.Constant(eventType.GetType().Name),
-                    exceptionParam,
-                    Expression.Constant(null))
+                    exceptionParam)
                 );
 
             Expression registerResult  = Expression.TryCatch(
