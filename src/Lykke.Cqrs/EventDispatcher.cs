@@ -7,6 +7,7 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Runtime.CompilerServices;
+using Common;
 using Common.Log;
 using Lykke.Messaging.Contract;
 using ThreadState = System.Threading.ThreadState;
@@ -23,6 +24,7 @@ namespace Lykke.Cqrs
         private readonly Thread m_ApplyBatchesThread;
         private readonly BatchManager m_DefaultBatchManager;
         private readonly MethodInfo _getAwaiterInfo;
+        private readonly MethodInfo _writeErrorInfo;
 
         internal static long m_FailedEventRetryDelay = 60000;
 
@@ -43,6 +45,12 @@ namespace Lykke.Cqrs
             var taskMethods = typeof(Task<CommandHandlingResult>).GetMethods(BindingFlags.Public | BindingFlags.Instance);
             var awaiterResultType = typeof(TaskAwaiter<CommandHandlingResult>);
             _getAwaiterInfo = taskMethods.First(m => m.Name == "GetAwaiter" && m.ReturnType == awaiterResultType);
+            _writeErrorInfo = _log.GetType().GetMethod(
+                "WriteErrorAsync",
+                new Type[]
+                {
+                    typeof(string), typeof(string), typeof(string), typeof(Exception), typeof(DateTime?)
+                });
         }
 
         private void ApplyBatches(bool force = false)
@@ -184,7 +192,7 @@ namespace Lykke.Cqrs
             var eventsListType = typeof(List<>).MakeGenericType(eventType);
             var list = Expression.Variable(eventsListType, "list");
             var @event = Expression.Variable(typeof(object), "@event");
-            var callParameters = new []{events,batchContext.Parameter};
+            var callParameters = new []{events, batchContext.Parameter};
 
             var handleParams = new Expression[] { Expression.Call(list, eventsListType.GetMethod("ToArray")) }
                 .Concat(optionalParameters.Select(p => p.ValueExpression))
@@ -237,17 +245,25 @@ namespace Lykke.Cqrs
             var failResult = Expression.Constant(new CommandHandlingResult { Retry = true, RetryDelay = m_FailedEventRetryDelay });
 
             var exceptionParam = Expression.Parameter(typeof(Exception));
+            var toJsonExpr = Expression.Call(
+                typeof(JsonSerialisersExt).GetMethod("ToJson"),
+                @event,
+                Expression.Constant(false, typeof(bool)));
+            var logTaskCall = Expression.Call(
+                _writeErrorInfo,
+                Expression.Constant(_log),
+                Expression.Constant(o.GetType().Name),
+                Expression.Constant(eventType.Name),
+                toJsonExpr,
+                exceptionParam,
+                Expression.Constant(null, typeof(DateTime?)));
+            var logCall = Expression.Call(
+                Expression.Call(logTaskCall, "GetAwaiter", null),
+                "GetResult",
+                null);
             var exceptionHandleCall = Expression.Block(
                 Expression.Call(result, typeof(List<CommandHandlingResult>).GetMethod("Add"), failResult),
-                //LogExtensions.WriteError(this ILog log, string process, object context, Exception exception = null, DateTime? dateTime = null)
-                Expression.Call(
-                    typeof(LogExtensions).GetMethod("WriteError"),
-                    Expression.Constant(_log),
-                    Expression.Constant(o.GetType().Name),
-                    Expression.Constant(eventType.GetType().Name),
-                    exceptionParam,
-                    Expression.Constant(null, typeof(DateTime?)))
-                );
+                logCall);
 
             Expression registerResult  = Expression.TryCatch(
                 Expression.Block(

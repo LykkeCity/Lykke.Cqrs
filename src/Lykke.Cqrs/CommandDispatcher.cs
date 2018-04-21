@@ -15,8 +15,8 @@ namespace Lykke.Cqrs
 {
     internal class CommandDispatcher : IDisposable
     {
-        private readonly Dictionary<Type, Func<object, Endpoint, string, CommandHandlingResult>> m_Handlers =
-            new Dictionary<Type, Func<object, Endpoint, string, CommandHandlingResult>>();
+        private readonly Dictionary<Type, (string, Func<object, Endpoint, string, CommandHandlingResult>)> m_Handlers =
+            new Dictionary<Type, (string, Func<object, Endpoint, string, CommandHandlingResult>)>();
         private readonly string m_BoundedContext;
         private readonly ILog _log;
         private readonly MethodInfo _getAwaiterInfo;
@@ -106,8 +106,8 @@ namespace Lykke.Cqrs
                 commandParameter = Expression.New(ctor, Expression.Convert(command, handledType), endpoint, route);
             }
 
-            Func<object, Endpoint, string, CommandHandlingResult> handler;
-            if (m_Handlers.TryGetValue(handledType, out handler))
+            (string, Func<object, Endpoint, string, CommandHandlingResult>) handlerInfo;
+            if (m_Handlers.TryGetValue(handledType, out handlerInfo))
                 throw new InvalidOperationException(
                     $"Only one handler per command is allowed. Command {commandType} handler is already registered in bound context {m_BoundedContext}. Can not register {o} as handler for it");
 
@@ -162,12 +162,12 @@ namespace Lykke.Cqrs
                 lambda = (Expression<Func<object, Endpoint, string, CommandHandlingResult>>)Expression.Lambda(block, command, endpoint,route);
             }
 
-            m_Handlers.Add(handledType, lambda.Compile());
+            m_Handlers.Add(handledType, (o.GetType().Name, lambda.Compile()));
         }
 
         public void Dispatch(object command, AcknowledgeDelegate acknowledge, Endpoint commandOriginEndpoint,string route)
         {
-            if (!m_Handlers.TryGetValue(command.GetType(), out var handler))
+            if (!m_Handlers.TryGetValue(command.GetType(), out var handlerInfo))
             {
                 _log.WriteWarningAsync(
                     nameof(CommandDispatcher),
@@ -180,7 +180,8 @@ namespace Lykke.Cqrs
             Handle(
                 command,
                 acknowledge,
-                handler,
+                handlerInfo.Item1,
+                handlerInfo.Item2,
                 commandOriginEndpoint,
                 route);
         }
@@ -188,6 +189,7 @@ namespace Lykke.Cqrs
         private void Handle(
             object command,
             AcknowledgeDelegate acknowledge,
+            string handlerTypeName,
             Func<object, Endpoint, string, CommandHandlingResult> handler,
             Endpoint commandOriginEndpoint,
             string route)
@@ -206,11 +208,9 @@ namespace Lykke.Cqrs
             catch (Exception e)
             {
                 _log.WriteErrorAsync(
-                    nameof(CommandDispatcher),
-                    nameof(Handle),
-                    command != null
-                        ? $"Failed to handle command of type {commandType}. Command:\r\b{command.ToJson()}"
-                        : "Failed to handle null command",
+                    handlerTypeName,
+                    command.GetType().Name,
+                    command?.ToJson() ?? "",
                     e);
 
                 acknowledge(m_FailedCommandRetryDelay, false);
