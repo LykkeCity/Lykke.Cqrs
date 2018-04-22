@@ -15,7 +15,7 @@ namespace Lykke.Cqrs
 {
     internal class CommandDispatcher : IDisposable
     {
-        private readonly Dictionary<Type, (string, Func<object, Endpoint, string, CommandHandlingResult>)> m_Handlers =
+        private readonly Dictionary<Type, (string, Func<object, Endpoint, string, CommandHandlingResult>)> m_handlers =
             new Dictionary<Type, (string, Func<object, Endpoint, string, CommandHandlingResult>)>();
         private readonly string m_BoundedContext;
         private readonly ILog _log;
@@ -51,7 +51,7 @@ namespace Lykke.Cqrs
                 .Select(m => new
                 {
                     method = m,
-                    returnsResult = m.ReturnType == typeof(Task<CommandHandlingResult>),
+                    returnType = m.ReturnType,
                     commandType = m.GetParameters().First().ParameterType,
                     callParameters = m.GetParameters().Skip(1).Select(p => new
                     {
@@ -67,7 +67,7 @@ namespace Lykke.Cqrs
                     method.commandType,
                     o,
                     method.callParameters.ToDictionary(p => p.parameter, p => p.optionalParameter.Value),
-                    method.returnsResult);
+                    method.returnType);
             }
         }
 
@@ -85,7 +85,7 @@ namespace Lykke.Cqrs
             Type commandType,
             object o,
             Dictionary<ParameterInfo, object> optionalParameters,
-            bool returnsResult)
+            Type returnType)
         {
             var isRoutedCommandHandler = commandType.IsGenericType && commandType.GetGenericTypeDefinition() == typeof (RoutedCommand<>);
             var command = Expression.Parameter(typeof(object), "command");
@@ -107,7 +107,7 @@ namespace Lykke.Cqrs
             }
 
             (string, Func<object, Endpoint, string, CommandHandlingResult>) handlerInfo;
-            if (m_Handlers.TryGetValue(handledType, out handlerInfo))
+            if (m_handlers.TryGetValue(handledType, out handlerInfo))
                 throw new InvalidOperationException(
                     $"Only one handler per command is allowed. Command {commandType} handler is already registered in bound context {m_BoundedContext}. Can not register {o} as handler for it");
 
@@ -123,11 +123,22 @@ namespace Lykke.Cqrs
                      ? (Expression)variables[p.Key.Name]
                      : (Expression)Expression.Constant(p.Value, p.Key.ParameterType))).ToArray();
 
-            var taskCall = Expression.Call(Expression.Constant(o), "Handle", null, parameters);
-            var awaiterCall = returnsResult
-                ? Expression.Call(taskCall, _getAwaiterInfo)
-                : Expression.Call(taskCall, "GetAwaiter", null, null);
-            var resultCall = Expression.Call(awaiterCall, "GetResult", null, null);
+            var handleCall = Expression.Call(Expression.Constant(o), "Handle", null, parameters);
+            MethodCallExpression resultCall;
+            if (returnType == typeof(Task<CommandHandlingResult>))
+            {
+                var awaiterCall = Expression.Call(handleCall, _getAwaiterInfo);
+                resultCall = Expression.Call(awaiterCall, "GetResult", null);
+            }
+            else if (returnType == typeof(Task))
+            {
+                var awaiterCall = Expression.Call(handleCall, "GetAwaiter", null);
+                resultCall = Expression.Call(awaiterCall, "GetResult", null);
+            }
+            else
+            {
+                resultCall = handleCall;
+            }
 
             var disposableType = typeof (IDisposable);
             var call = Expression.Block(
@@ -148,26 +159,21 @@ namespace Lykke.Cqrs
                                     .DefaultIfEmpty(Expression.Empty())))
                          }));
 
-            Expression<Func<object, Endpoint, string, CommandHandlingResult>> lambda;
-            if (returnsResult)
-            {
-                lambda = (Expression<Func<object, Endpoint, string, CommandHandlingResult>>)Expression.Lambda(call, command, endpoint, route);
-            }
-            else
+            if (returnType != typeof(Task<CommandHandlingResult>) && returnType != typeof(CommandHandlingResult))
             {
                 var returnLabel = Expression.Label(
-                    Expression.Label(typeof(Task<CommandHandlingResult>)),
-                    Expression.Constant(new CommandHandlingResult { Retry = false, RetryDelay = 0 })); 
-                var block = Expression.Block(call, returnLabel);
-                lambda = (Expression<Func<object, Endpoint, string, CommandHandlingResult>>)Expression.Lambda(block, command, endpoint,route);
+                    Expression.Label(typeof(CommandHandlingResult)),
+                    Expression.Constant(new CommandHandlingResult { Retry = false, RetryDelay = 0 }));
+                call = Expression.Block(call, returnLabel);
             }
+            var lambda = (Expression<Func<object, Endpoint, string, CommandHandlingResult>>)Expression.Lambda(call, command, endpoint, route);
 
-            m_Handlers.Add(handledType, (o.GetType().Name, lambda.Compile()));
+            m_handlers.Add(handledType, (o.GetType().Name, lambda.Compile()));
         }
 
         public void Dispatch(object command, AcknowledgeDelegate acknowledge, Endpoint commandOriginEndpoint,string route)
         {
-            if (!m_Handlers.TryGetValue(command.GetType(), out var handlerInfo))
+            if (!m_handlers.TryGetValue(command.GetType(), out var handlerInfo))
             {
                 _log.WriteWarningAsync(
                     nameof(CommandDispatcher),
@@ -197,9 +203,9 @@ namespace Lykke.Cqrs
             string commandType = command.GetType().Name;
             var telemtryOperation = TelemetryHelper.InitTelemetryOperation(
                 "Cqrs handle command",
+                handlerTypeName,
                 commandType,
-                m_BoundedContext,
-                commandOriginEndpoint.Destination.Subscribe);
+                m_BoundedContext);
             try
             {
                 var result = handler(command, commandOriginEndpoint, route);

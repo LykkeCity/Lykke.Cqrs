@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using Lykke.Messaging.Contract;
+using Common;
 using Common.Log;
 using Lykke.Cqrs.Utils;
 
@@ -39,22 +40,62 @@ namespace Lykke.Cqrs
         }
 
         public void Handle(
-            Func<object[], object, CommandHandlingResult[]>[] handlers,
+            (string, Func<object[], object, CommandHandlingResult[]>)[] batchHandlerInfos,
             Tuple<object, AcknowledgeDelegate>[] events,
             EventOrigin origin)
         {
-            if(!events.Any())
+            if(events.Length == 0)
                 return;
 
             if (m_BatchSize == 0 && ApplyTimeout == 0)
             {
-                DoHandle(handlers, events, origin, null);
+                DoHandle(
+                    batchHandlerInfos,
+                    events,
+                    origin,
+                    null);
                 return;
             }
 
             lock (m_Events)
             {
-                m_Events.Add(batchContext => DoHandle(handlers, events, origin, batchContext));
+                m_Events.Add(batchContext => DoHandle(
+                    batchHandlerInfos,
+                    events,
+                    origin,
+                    batchContext));
+                if (m_Counter == 0 && ApplyTimeout != 0)
+                    m_SinceFirstEvent.Start();
+                m_Counter += events.Length;
+                ApplyBatchIfRequired();
+            }
+        }
+
+        public void Handle(
+            (string, Func<object, object, CommandHandlingResult>)[] handlerInfos,
+            Tuple<object, AcknowledgeDelegate>[] events,
+            EventOrigin origin)
+        {
+            if (events.Length == 0)
+                return;
+
+            if (m_BatchSize == 0 && ApplyTimeout == 0)
+            {
+                DoHandle(
+                    handlerInfos,
+                    events,
+                    origin,
+                    null);
+                return;
+            }
+
+            lock (m_Events)
+            {
+                m_Events.Add(batchContext => DoHandle(
+                    handlerInfos,
+                    events,
+                    origin,
+                    batchContext));
                 if (m_Counter == 0 && ApplyTimeout != 0)
                     m_SinceFirstEvent.Start();
                 m_Counter += events.Length;
@@ -93,75 +134,188 @@ namespace Lykke.Cqrs
         }
 
         private void DoHandle(
-            Func<object[], object, CommandHandlingResult[]>[] handlers,
+            (string, Func<object[], object, CommandHandlingResult[]>)[] batchHandlerInfos,
             Tuple<object, AcknowledgeDelegate>[] events,
             EventOrigin origin,
             object batchContext)
         {
-            //TODO: What if connect is broken and engine failes to aknowledge?..
-            CommandHandlingResult[] results;
+            CommandHandlingResult[] results = @events
+                .Select(x => new CommandHandlingResult { Retry = false, RetryDelay = 0 })
+                .ToArray();
             try
             {
                 var eventsArray = @events.Select(e => e.Item1).ToArray();
-                var handleResults = new CommandHandlingResult[handlers.Length][];
-                for(int i = 0; i < handlers.Length; ++i)
+
+                ProcessBatchHandlers(
+                    batchHandlerInfos,
+                    eventsArray,
+                    results,
+                    origin,
+                    batchContext);
+            }
+            catch (Exception ex)
+            {
+                _log.WriteErrorAsync(
+                    nameof(EventDispatcher),
+                    nameof(DoHandle),
+                    "Failed to handle events batch of type " + origin.EventType.Name,
+                    ex);
+                foreach (var result in results)
+                {
+                    result.Retry = true;
+                    result.RetryDelay = m_FailedEventRetryDelay;
+                }
+            }
+
+            //TODO: What if connect is broken and engine failes to aknowledge?..
+            for (var i = 0; i < events.Length; i++)
+            {
+                var result = results[i];
+                var acknowledge = events[i].Item2;
+                if (result.Retry)
+                    acknowledge(result.RetryDelay, false);
+                else
+                    acknowledge(0, true);
+            }
+        }
+
+        private void DoHandle(
+            (string, Func<object, object, CommandHandlingResult>)[] handlerInfos,
+            Tuple<object, AcknowledgeDelegate>[] events,
+            EventOrigin origin,
+            object batchContext)
+        {
+            CommandHandlingResult[] results = @events
+                .Select(x => new CommandHandlingResult { Retry = false, RetryDelay = 0 })
+                .ToArray();
+            try
+            {
+                var eventsArray = @events.Select(e => e.Item1).ToArray();
+
+                ProcessHandlers(
+                    handlerInfos,
+                    eventsArray,
+                    results,
+                    origin,
+                    batchContext);
+            }
+            catch (Exception ex)
+            {
+                _log.WriteErrorAsync(
+                    nameof(EventDispatcher),
+                    nameof(DoHandle),
+                    "Failed to handle events batch of type " + origin.EventType.Name,
+                    ex);
+                foreach (var result in results)
+                {
+                    result.Retry = true;
+                    result.RetryDelay = m_FailedEventRetryDelay;
+                }
+            }
+
+            //TODO: What if connect is broken and engine failes to aknowledge?..
+            for (var i = 0; i < events.Length; i++)
+            {
+                var result = results[i];
+                var acknowledge = events[i].Item2;
+                if (result.Retry)
+                    acknowledge(result.RetryDelay, false);
+                else
+                    acknowledge(0, true);
+            }
+        }
+
+        private void ProcessBatchHandlers(
+            IEnumerable<(string, Func<object[], object, CommandHandlingResult[]>)> batchHandlerInfos,
+            object[] eventsArray,
+            CommandHandlingResult[] results,
+            EventOrigin origin,
+            object batchContext)
+        {
+            foreach(var batchHandlerInfo in batchHandlerInfos)
+            {
+                var telemtryOperation = TelemetryHelper.InitTelemetryOperation(
+                    "Cqrs handle events",
+                    batchHandlerInfo.Item1,
+                    origin.EventType.Name,
+                    origin.BoundedContext);
+                try
+                {
+                    var handleResults = batchHandlerInfo.Item2(eventsArray, batchContext);
+                    if (handleResults.Length != results.Length)
+                        _log.WriteWarning(batchHandlerInfo.Item1, eventsArray.ToJson(), $"Number of results is not equal to number of events!");
+                    for (int i = 0; i < handleResults.Length; ++i)
+                    {
+                        if (!handleResults[i].Retry)
+                            continue;
+
+                        if (results[i].Retry)
+                            results[i].RetryDelay = Math.Min(results[i].RetryDelay, handleResults[i].RetryDelay);
+                        else
+                            results[i] = handleResults[i];
+                    }
+                }
+                catch (Exception ex)
+                {
+                    TelemetryHelper.SubmitException(telemtryOperation, ex);
+                    foreach (var result in results)
+                    {
+                        result.Retry = true;
+                        result.RetryDelay = m_FailedEventRetryDelay;
+                    }
+                    _log.WriteErrorAsync(batchHandlerInfo.Item1, eventsArray[0].GetType().Name, eventsArray.ToJson(), ex)
+                        .GetAwaiter().GetResult();
+                    return;
+                }
+                finally
+                {
+                    TelemetryHelper.SubmitOperationResult(telemtryOperation);
+                }
+            }
+        }
+
+        private void ProcessHandlers(
+            IEnumerable<(string, Func<object, object, CommandHandlingResult>)> handlerInfos,
+            object[] eventsArray,
+            CommandHandlingResult[] results,
+            EventOrigin origin,
+            object batchContext)
+        {
+            for(int i = 0; i < eventsArray.Length; ++i)
+            {
+                var @event = eventsArray[i];
+                foreach (var handlerInfo in handlerInfos)
                 {
                     var telemtryOperation = TelemetryHelper.InitTelemetryOperation(
                         "Cqrs handle events",
+                        handlerInfo.Item1,
                         origin.EventType.Name,
-                        origin.BoundedContext,
-                        batchContext?.ToString());
+                        origin.BoundedContext);
                     try
                     {
-                        handleResults[i] = handlers[i](eventsArray, batchContext);
+                        var handleResult = handlerInfo.Item2(@event, batchContext);
+                        if (handleResult.Retry)
+                        {
+                            if (results[i].Retry)
+                                results[i].RetryDelay = Math.Min(results[i].RetryDelay, handleResult.RetryDelay);
+                            else
+                                results[i] = handleResult;
+                        }
                     }
                     catch (Exception ex)
                     {
                         TelemetryHelper.SubmitException(telemtryOperation, ex);
-                        throw;
+                        results[i].Retry = true;
+                        results[i].RetryDelay = m_FailedEventRetryDelay;
+                        _log.WriteErrorAsync(handlerInfo.Item1, @event.GetType().Name, @event.ToJson(), ex)
+                            .GetAwaiter().GetResult();
+                        break;
                     }
                     finally
                     {
                         TelemetryHelper.SubmitOperationResult(telemtryOperation);
                     }
                 }
-
-                results = Enumerable
-                    .Range(0, eventsArray.Length)
-                    .Select(i =>
-                    {
-                        var r = handleResults.Select(h => h[i]).ToArray();
-                        var retry = r.Any(res => res.Retry);
-                        return new CommandHandlingResult()
-                        {
-                            Retry = retry,
-                            RetryDelay = r.Where(res => !retry || res.Retry).Min(res => res.RetryDelay)
-                        };
-                    })
-                    .ToArray();
-
-                //TODO: verify number of results matches number of events
-            }
-            catch (Exception e)
-            {
-                _log.WriteErrorAsync(
-                    nameof(EventDispatcher),
-                    nameof(DoHandle),
-                    "Failed to handle events batch of type " + origin.EventType.Name,
-                    e);
-                results = @events
-                    .Select(x => new CommandHandlingResult { Retry = true, RetryDelay = m_FailedEventRetryDelay })
-                    .ToArray();
-            }
-
-            for (var i = 0; i < events.Length; i++)
-            {
-                var result = results[i];
-                var acknowledge = events[i].Item2;
-                if (result.Retry)
-                    acknowledge(result.RetryDelay, !result.Retry);
-                else
-                    acknowledge(0, true);
             }
         }
     }

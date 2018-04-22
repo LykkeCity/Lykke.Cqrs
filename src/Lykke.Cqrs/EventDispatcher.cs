@@ -7,7 +7,6 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Runtime.CompilerServices;
-using Common;
 using Common.Log;
 using Lykke.Messaging.Contract;
 using ThreadState = System.Threading.ThreadState;
@@ -16,15 +15,16 @@ namespace Lykke.Cqrs
 {
     internal class EventDispatcher : IDisposable
     {
-        private readonly Dictionary<EventOrigin, List<Tuple<Func<object[], object, CommandHandlingResult[]>, BatchManager>>> m_Handlers =
-            new Dictionary<EventOrigin, List<Tuple<Func<object[], object, CommandHandlingResult[]>, BatchManager>>>();
+        private readonly Dictionary<EventOrigin, List<((string, Func<object[], object, CommandHandlingResult[]>), BatchManager)>> m_batchHandlerInfos =
+            new Dictionary<EventOrigin, List<((string, Func<object[], object, CommandHandlingResult[]>), BatchManager)>>();
+        private readonly Dictionary<EventOrigin, List<((string, Func<object, object, CommandHandlingResult>), BatchManager)>> m_handlerInfos =
+            new Dictionary<EventOrigin, List<((string, Func<object, object, CommandHandlingResult>), BatchManager)>>();
         private readonly ILog _log;
         private readonly string m_BoundedContext;
         private readonly ManualResetEvent m_Stop = new ManualResetEvent(false);
         private readonly Thread m_ApplyBatchesThread;
         private readonly BatchManager m_DefaultBatchManager;
         private readonly MethodInfo _getAwaiterInfo;
-        private readonly MethodInfo _writeErrorInfo;
 
         internal static long m_FailedEventRetryDelay = 60000;
 
@@ -45,17 +45,15 @@ namespace Lykke.Cqrs
             var taskMethods = typeof(Task<CommandHandlingResult>).GetMethods(BindingFlags.Public | BindingFlags.Instance);
             var awaiterResultType = typeof(TaskAwaiter<CommandHandlingResult>);
             _getAwaiterInfo = taskMethods.First(m => m.Name == "GetAwaiter" && m.ReturnType == awaiterResultType);
-            _writeErrorInfo = _log.GetType().GetMethod(
-                "WriteErrorAsync",
-                new Type[]
-                {
-                    typeof(string), typeof(string), typeof(string), typeof(Exception), typeof(DateTime?)
-                });
         }
 
         private void ApplyBatches(bool force = false)
         {
-            foreach (var batchManager in m_Handlers.SelectMany(h => h.Value.Select(_ => _.Item2)))
+            var batchManagers = m_batchHandlerInfos.SelectMany(h => h.Value.Select(_ => _.Item2))
+                .Concat(m_handlerInfos.SelectMany(h => h.Value.Select(_ => _.Item2)))
+                .Distinct();
+
+            foreach (var batchManager in batchManagers)
             {
                 batchManager.ApplyBatchIfRequired(force);
             }
@@ -133,7 +131,7 @@ namespace Lykke.Cqrs
                 .Select(m => new {
                     method = m,
                     eventType = m.GetParameters().First().ParameterType,
-                    returnsResult = m.ReturnType == typeof (Task<CommandHandlingResult>),
+                    returnType = m.ReturnType,
                     isBatch = m.ReturnType == typeof (CommandHandlingResult[]) && m.GetParameters().First().ParameterType.IsArray,
                     callParameters = m.GetParameters().Skip(1).Select(p => new
                     {
@@ -145,37 +143,47 @@ namespace Lykke.Cqrs
 
             foreach (var method in handleMethods)
             {
-                var eventType = method.isBatch ? method.eventType.GetElementType() : method.eventType;
-                var key = new EventOrigin(fromBoundedContext, eventType);
-                List<Tuple<Func<object[], object, CommandHandlingResult[]>, BatchManager>> handlersList;
-                if (!m_Handlers.TryGetValue(key, out handlersList))
-                {
-                    handlersList = new List<Tuple<Func<object[], object, CommandHandlingResult[]>, BatchManager>>();
-                    m_Handlers.Add(key, handlersList);
-                }
-
                 var notInjectableParameters = method.callParameters
                     .Where(p => p.optionalParameter == null)
                     .Select(p => p.parameter.ParameterType + " " + p.parameter.Name)
                     .ToArray();
-                if(notInjectableParameters.Length>0)
+                if(notInjectableParameters.Length > 0)
                     throw new InvalidOperationException(
                         $"{o.GetType().Name} type can not be registered as event handler. Method {method.method} contains non injectable parameters:{string.Join(", ", notInjectableParameters)}");
 
-                var handler = method.isBatch
-                    ? CreateBatchHandler(
+                var eventType = method.isBatch ? method.eventType.GetElementType() : method.eventType;
+                var key = new EventOrigin(fromBoundedContext, eventType);
+                if (method.isBatch)
+                {
+                    List<((string, Func<object[], object, CommandHandlingResult[]>), BatchManager)> batchHandlersList;
+                    if (!m_batchHandlerInfos.TryGetValue(key, out batchHandlersList))
+                    {
+                        batchHandlersList = new List<((string, Func<object[], object, CommandHandlingResult[]>), BatchManager)>();
+                        m_batchHandlerInfos.Add(key, batchHandlersList);
+                    }
+                    var batchHandler = CreateBatchHandler(
                         eventType,
                         o,
                         method.callParameters.Select(p => p.optionalParameter),
-                        batchContextParameter)
-                    : CreateHandler(
-                        eventType,
-                        o,
-                        method.callParameters.Select(p => p.optionalParameter),
-                        method.returnsResult,
                         batchContextParameter);
-
-                handlersList.Add(Tuple.Create(handler, batchManager ?? m_DefaultBatchManager));
+                    batchHandlersList.Add(((o.GetType().Name, batchHandler), batchManager ?? m_DefaultBatchManager));
+                }
+                else
+                {
+                    List<((string, Func<object, object, CommandHandlingResult>), BatchManager)> handlersList;
+                    if (!m_handlerInfos.TryGetValue(key, out handlersList))
+                    {
+                        handlersList = new List<((string, Func<object, object, CommandHandlingResult>), BatchManager)>();
+                        m_handlerInfos.Add(key, handlersList);
+                    }
+                    var handler = CreateHandler(
+                        eventType,
+                        o,
+                        method.callParameters.Select(p => p.optionalParameter),
+                        method.returnType,
+                        batchContextParameter);
+                    handlersList.Add(((o.GetType().Name, handler), batchManager ?? m_DefaultBatchManager));
+                }
             }
         }
 
@@ -192,7 +200,7 @@ namespace Lykke.Cqrs
             var eventsListType = typeof(List<>).MakeGenericType(eventType);
             var list = Expression.Variable(eventsListType, "list");
             var @event = Expression.Variable(typeof(object), "@event");
-            var callParameters = new []{events, batchContext.Parameter};
+            var callParameters = new []{ events, batchContext.Parameter };
 
             var handleParams = new Expression[] { Expression.Call(list, eventsListType.GetMethod("ToArray")) }
                 .Concat(optionalParameters.Select(p => p.ValueExpression))
@@ -215,75 +223,49 @@ namespace Lykke.Cqrs
             return lambda.Compile();
         }
 
-        private Func<object[], object, CommandHandlingResult[]> CreateHandler(
+        private Func<object, object, CommandHandlingResult> CreateHandler(
             Type eventType,
             object o,
             IEnumerable<OptionalParameterBase> optionalParameters,
-            bool returnsResult,
+            Type returnType,
             ExpressionParameter batchContext)
         {
-            LabelTarget returnTarget = Expression.Label(typeof(CommandHandlingResult[]));
-            var returnLabel = Expression.Label(returnTarget, Expression.Constant(new CommandHandlingResult[0]));
+            LabelTarget returnTarget = Expression.Label(typeof(CommandHandlingResult));
+            var returnLabel = Expression.Label(returnTarget, Expression.Constant(new CommandHandlingResult()));
 
-            var events = Expression.Parameter(typeof(object[]));
-            var result = Expression.Variable(typeof(List<CommandHandlingResult>), "result");
-            var @event = Expression.Variable(typeof(object), "@event");
-
-            var callParameters = new []{events, batchContext.Parameter};
-
+            var @event = Expression.Parameter(typeof(object));
             var handleParams = new Expression[] { Expression.Convert(@event, eventType) }
                 .Concat(optionalParameters.Select(p => p.ValueExpression))
                 .ToArray();
 
-            var taskCall = Expression.Call(Expression.Constant(o), "Handle", null, handleParams);
-            var awaiterCall = returnsResult
-                ? Expression.Call(taskCall, _getAwaiterInfo)
-                : Expression.Call(taskCall, "GetAwaiter", null);
-            var callHandler = Expression.Call(awaiterCall, "GetResult", null);
-
-            var okResult = Expression.Constant(new CommandHandlingResult { Retry = false, RetryDelay = 0 });
-            var failResult = Expression.Constant(new CommandHandlingResult { Retry = true, RetryDelay = m_FailedEventRetryDelay });
-
-            var exceptionParam = Expression.Parameter(typeof(Exception));
-            var toJsonExpr = Expression.Call(
-                typeof(JsonSerialisersExt).GetMethod("ToJson"),
-                @event,
-                Expression.Constant(false, typeof(bool)));
-            var logTaskCall = Expression.Call(
-                _writeErrorInfo,
-                Expression.Constant(_log),
-                Expression.Constant(o.GetType().Name),
-                Expression.Constant(eventType.Name),
-                toJsonExpr,
-                exceptionParam,
-                Expression.Constant(null, typeof(DateTime?)));
-            var logCall = Expression.Call(
-                Expression.Call(logTaskCall, "GetAwaiter", null),
-                "GetResult",
-                null);
-            var exceptionHandleCall = Expression.Block(
-                Expression.Call(result, typeof(List<CommandHandlingResult>).GetMethod("Add"), failResult),
-                logCall);
-
-            Expression registerResult  = Expression.TryCatch(
-                Expression.Block(
-                    typeof(void),
-                    returnsResult
-                        ?(Expression)Expression.Call(result, typeof(List<CommandHandlingResult>).GetMethod("Add"), callHandler)
-                        :(Expression)Expression.Block(callHandler, Expression.Call(result, typeof(List<CommandHandlingResult>).GetMethod("Add"), okResult))
-                    ),
-                Expression.Catch(exceptionParam, exceptionHandleCall)
-                );
+            var handleCall = Expression.Call(Expression.Constant(o), "Handle", null, handleParams);
+            Expression resultCall;
+            if (returnType == typeof(Task<CommandHandlingResult>))
+            {
+                var awaiterCall = Expression.Call(handleCall, _getAwaiterInfo);
+                resultCall = Expression.Call(awaiterCall, "GetResult", null);
+            }
+            else if (returnType == typeof(CommandHandlingResult))
+            {
+                resultCall = handleCall;
+            }
+            else
+            {
+                var awaiterMethod = o.GetType().GetMethod("GetAwaiter");
+                resultCall = Expression.Block(
+                    awaiterMethod != null
+                        ? Expression.Call(Expression.Call(handleCall, awaiterMethod), "GetResult", null)
+                        : handleCall,
+                    Expression.Label(
+                        Expression.Label(typeof(CommandHandlingResult)),
+                        Expression.Constant(new CommandHandlingResult { Retry = false, RetryDelay = 0 })));
+            }
 
             var create = Expression.Block(
-               new[] { result, @event },
-               Expression.Assign(result, Expression.New(typeof(List<CommandHandlingResult>))),
-               ForEachExpr(events, @event, registerResult),
-               Expression.Return(returnTarget, Expression.Call(result, typeof(List<CommandHandlingResult>).GetMethod("ToArray"))),
-               returnLabel
-               );
+               Expression.Return(returnTarget, resultCall),
+               returnLabel);
 
-            var lambda = (Expression<Func<object[], object, CommandHandlingResult[]>>)Expression.Lambda(create, callParameters);
+            var lambda = (Expression<Func<object, object, CommandHandlingResult>>)Expression.Lambda(create, @event, batchContext.Parameter);
 
             return lambda.Compile();
         }
@@ -326,30 +308,45 @@ namespace Lykke.Cqrs
 
         private void Dispatch(EventOrigin origin, Tuple<object, AcknowledgeDelegate>[] events)
         {
-            List<Tuple<Func<object[], object, CommandHandlingResult[]>, BatchManager>> list;
-
             if (events == null)
             {
                 //TODO: need to handle null deserialized from messaging
-                throw new ArgumentNullException("events");
+                throw new ArgumentNullException(nameof(events));
+            }
+            if (events.Length == 0)
+                return;
+
+            bool handlerFound = false;
+
+            if (m_batchHandlerInfos.TryGetValue(origin, out var batchList))
+            {
+                var handlersByBatchManager = batchList.GroupBy(i => i.Item2);
+                foreach (var grouping in handlersByBatchManager)
+                {
+                    var batchManager = grouping.Key;
+                    var handlers = grouping.Select(h => h.Item1).ToArray();
+                    batchManager.Handle(handlers, events, origin);
+                }
+                handlerFound = true;
             }
 
-            if (!m_Handlers.TryGetValue(origin, out list))
+            if (m_handlerInfos.TryGetValue(origin, out var list))
             {
+                var handlersByBatchManager = list.GroupBy(i => i.Item2);
+                foreach (var grouping in handlersByBatchManager)
+                {
+                    var batchManager = grouping.Key;
+                    var handlers = grouping.Select(h => h.Item1).ToArray();
+                    batchManager.Handle(handlers, events, origin);
+                }
+                handlerFound = true;
+            }
+
+            if (!handlerFound)
                 foreach (var @event in events)
                 {
                     @event.Item2(0, true);
                 }
-                return;
-            }
-
-            var handlersByBatchManager = list.GroupBy(i => i.Item2);
-            foreach (var grouping in handlersByBatchManager)
-            {
-                var batchManager = grouping.Key;
-                var handlers = grouping.Select(h => h.Item1).ToArray();
-                batchManager.Handle(handlers, events, origin);
-            }
         }
 
         public void Dispose()

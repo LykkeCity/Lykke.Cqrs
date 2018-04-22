@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using Common.Log;
 using Lykke.Messaging.Contract;
-using Lykke.Cqrs;
 using NUnit.Framework;
 
 namespace Lykke.Cqrs.Tests

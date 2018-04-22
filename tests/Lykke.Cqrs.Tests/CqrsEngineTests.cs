@@ -7,7 +7,6 @@ using Lykke.Messaging;
 using Lykke.Messaging.Configuration;
 using Lykke.Messaging.Contract;
 using Lykke.Messaging.RabbitMq;
-using Lykke.Cqrs;
 using Lykke.Cqrs.Configuration;
 using Moq;
 using NUnit.Framework;
@@ -17,6 +16,7 @@ namespace Lykke.Cqrs.Tests
     class CommandHandler
     {
         public List<object> AcceptedCommands = new List<object>();
+
         private int m_ProcessingTimeout;
 
         public CommandHandler(int processingTimeout)
@@ -26,6 +26,13 @@ namespace Lykke.Cqrs.Tests
         public CommandHandler()
             : this(0)
         {
+        }
+
+        public void Handle(string command, IEventPublisher eventPublisher)
+        {
+            Thread.Sleep(m_ProcessingTimeout);
+
+            AcceptedCommands.Add(command);
         }
 
         public void Handle(CreateCashOutCommand command, IEventPublisher eventPublisher)
@@ -66,7 +73,7 @@ namespace Lykke.Cqrs.Tests
                     messagingEngine.Send("test1", new Endpoint("InMemory", "exchange1", serializationFormat: "json"));
                     messagingEngine.Send("test2", new Endpoint("InMemory", "exchange2", serializationFormat: "json"));
                     messagingEngine.Send("test3", new Endpoint("InMemory", "exchange3", serializationFormat: "json"));
-                    Thread.Sleep(2000);
+                    Thread.Sleep(5000);
                     Assert.That(commandHandler.AcceptedCommands, Is.EquivalentTo(new[] { "test1", "test2" }));
                 }
             }
