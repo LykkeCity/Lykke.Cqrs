@@ -39,7 +39,7 @@ namespace Lykke.Cqrs
             m_BatchSize = batchSize;
         }
 
-        public void Handle(
+        public void BatchHandle(
             (string, Func<object[], object, CommandHandlingResult[]>)[] batchHandlerInfos,
             Tuple<object, AcknowledgeDelegate>[] events,
             EventOrigin origin)
@@ -49,7 +49,7 @@ namespace Lykke.Cqrs
 
             if (m_BatchSize == 0 && ApplyTimeout == 0)
             {
-                DoHandle(
+                DoBatchHandle(
                     batchHandlerInfos,
                     events,
                     origin,
@@ -59,7 +59,7 @@ namespace Lykke.Cqrs
 
             lock (m_Events)
             {
-                m_Events.Add(batchContext => DoHandle(
+                m_Events.Add(batchContext => DoBatchHandle(
                     batchHandlerInfos,
                     events,
                     origin,
@@ -133,7 +133,7 @@ namespace Lykke.Cqrs
             m_AfterBatchApply(batchContext);
         }
 
-        private void DoHandle(
+        private void DoBatchHandle(
             (string, Func<object[], object, CommandHandlingResult[]>)[] batchHandlerInfos,
             Tuple<object, AcknowledgeDelegate>[] events,
             EventOrigin origin,

@@ -325,7 +325,7 @@ namespace Lykke.Cqrs
                 {
                     var batchManager = grouping.Key;
                     var handlers = grouping.Select(h => h.Item1).ToArray();
-                    batchManager.Handle(handlers, events, origin);
+                    batchManager.BatchHandle(handlers, events, origin);
                 }
                 handlerFound = true;
             }
