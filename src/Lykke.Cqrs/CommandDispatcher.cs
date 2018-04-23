@@ -215,7 +215,7 @@ namespace Lykke.Cqrs
             {
                 _log.WriteErrorAsync(
                     handlerTypeName,
-                    command.GetType().Name,
+                    commandType,
                     command?.ToJson() ?? "",
                     e);
 

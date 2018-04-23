@@ -243,7 +243,8 @@ namespace Lykke.Cqrs
                 {
                     var handleResults = batchHandlerInfo.Item2(eventsArray, batchContext);
                     if (handleResults.Length != results.Length)
-                        _log.WriteWarning(batchHandlerInfo.Item1, eventsArray.ToJson(), $"Number of results is not equal to number of events!");
+                        _log.WriteWarningAsync(batchHandlerInfo.Item1, origin.EventType.Name, eventsArray.ToJson(), $"Number of results is not equal to number of events!")
+                            .GetAwaiter().GetResult();
                     for (int i = 0; i < handleResults.Length; ++i)
                     {
                         if (!handleResults[i].Retry)
@@ -263,7 +264,7 @@ namespace Lykke.Cqrs
                         result.Retry = true;
                         result.RetryDelay = m_FailedEventRetryDelay;
                     }
-                    _log.WriteErrorAsync(batchHandlerInfo.Item1, eventsArray[0].GetType().Name, eventsArray.ToJson(), ex)
+                    _log.WriteErrorAsync(batchHandlerInfo.Item1, origin.EventType.Name, eventsArray.ToJson(), ex)
                         .GetAwaiter().GetResult();
                     return;
                 }
@@ -307,7 +308,7 @@ namespace Lykke.Cqrs
                         TelemetryHelper.SubmitException(telemtryOperation, ex);
                         results[i].Retry = true;
                         results[i].RetryDelay = m_FailedEventRetryDelay;
-                        _log.WriteErrorAsync(handlerInfo.Item1, @event.GetType().Name, @event.ToJson(), ex)
+                        _log.WriteErrorAsync(handlerInfo.Item1, origin.EventType.Name, @event.ToJson(), ex)
                             .GetAwaiter().GetResult();
                         break;
                     }
