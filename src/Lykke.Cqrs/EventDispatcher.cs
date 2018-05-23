@@ -251,7 +251,7 @@ namespace Lykke.Cqrs
             }
             else
             {
-                var awaiterMethod = o.GetType().GetMethod("GetAwaiter");
+                var awaiterMethod = returnType.GetMethod("GetAwaiter");
                 resultCall = Expression.Block(
                     awaiterMethod != null
                         ? Expression.Call(Expression.Call(handleCall, awaiterMethod), "GetResult", null)

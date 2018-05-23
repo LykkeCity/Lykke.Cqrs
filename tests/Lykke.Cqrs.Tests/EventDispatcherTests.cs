@@ -1,16 +1,13 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Castle.Components.DictionaryAdapter;
 using Common.Log;
 using Lykke.Messaging;
 using Lykke.Messaging.Configuration;
 using Lykke.Messaging.Contract;
 using Lykke.Messaging.RabbitMq;
-using Lykke.Cqrs;
 using Lykke.Cqrs.Configuration;
 using Moq;
 using NUnit.Framework;
@@ -58,13 +55,9 @@ namespace Lykke.Cqrs.Tests
 
     class EventHandler
     {
-        public EventHandler(bool fail = false)
-        {
-            m_Fail = fail;
-        }
+        private bool m_Fail;
 
-        public readonly List<object> HandledEvents=new List<object>();
-        private  bool m_Fail;
+        public readonly List<object> HandledEvents = new List<object>();
 
         public bool Fail
         {
@@ -73,6 +66,11 @@ namespace Lykke.Cqrs.Tests
         }
 
         public bool FailOnce { get; set; }
+
+        public EventHandler(bool fail = false)
+        {
+            m_Fail = fail;
+        }
 
         public void Handle(string e)
         {
@@ -91,13 +89,28 @@ namespace Lykke.Cqrs.Tests
                 HandledEvents.Add(i);
                 return new CommandHandlingResult {Retry = m_Fail, RetryDelay = 600};
             }).ToArray();
-
         }
 
         public CommandHandlingResult Handle(Exception e)
         {
             HandledEvents.Add(e);
             return new CommandHandlingResult(){Retry = true,RetryDelay = 100};
+        }
+    }
+
+    class EventHandlerWithAsyncHandle
+    {
+        public async Task Handle(string evt)
+        {
+            throw new InvalidOperationException();
+        }
+    }
+
+    class EventHandlerWithSyncHandle
+    {
+        public Task Handle(string evt)
+        {
+            throw new InvalidOperationException();
         }
     }
 
@@ -118,7 +131,7 @@ namespace Lykke.Cqrs.Tests
         [Test]
         public void MultipleHandlersDispatchTest()
         {
-            var dispatcher=new EventDispatcher(new LogToConsole(), "testBC");
+            var dispatcher = new EventDispatcher(new LogToConsole(), "testBC");
             var handler1 = new EventHandler();
             var handler2 = new EventHandler();
             dispatcher.Wire("testBC",handler1);
@@ -289,6 +302,36 @@ namespace Lykke.Cqrs.Tests
                     Thread.Sleep(20000);
                 }
             }
+        }
+
+        [Test]
+        public void TestExceptionForAsyncEventHadler()
+        {
+            var dispatcher = new EventDispatcher(new LogToConsole(), "testBC");
+            var asyncHandler = new EventHandlerWithAsyncHandle();
+            dispatcher.Wire("testBC", asyncHandler);
+            int failedCount = 0;
+            dispatcher.Dispatch("testBC", "test", (delay, acknowledge) =>
+            {
+                if (!acknowledge)
+                    ++failedCount;
+            });
+            Assert.True(1 == failedCount, "Async event handler was not processed properly");
+        }
+
+        [Test]
+        public void TestExceptionForSyncEventHadler()
+        {
+            var dispatcher = new EventDispatcher(new LogToConsole(), "testBC");
+            var syncHandler = new EventHandlerWithSyncHandle();
+            dispatcher.Wire("testBC", syncHandler);
+            int failedCount = 0;
+            dispatcher.Dispatch("testBC", "test", (delay, acknowledge) =>
+            {
+                if (!acknowledge)
+                    ++failedCount;
+            });
+            Assert.True(1 == failedCount, "Sync event handler was not processed properly");
         }
     }
 }
