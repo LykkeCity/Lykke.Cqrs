@@ -283,7 +283,7 @@ namespace Lykke.Cqrs
                 }
                 catch (Exception ex)
                 {
-                    _log.WriteErrorAsync(batchHandlerInfo.Item1, origin.EventType.Name, eventsArray.ToJson(), ex)
+                    _log.WriteErrorAsync(batchHandlerInfo.Item1, origin.EventType.Name, $"Events: {eventsArray.ToJson()}", ex)
                         .GetAwaiter().GetResult();
 
                     foreach (var result in results)
