@@ -8,6 +8,15 @@ namespace Lykke.Cqrs
     {
         private readonly CqrsEngine m_CqrsEngine;
         private readonly Dictionary<string, Destination> m_TempDestinations = new Dictionary<string, Destination>();
+
+        internal CommandDispatcher CommandDispatcher { get; private set; }
+        internal EventDispatcher EventDispatcher { get; private set; }
+        internal List<IProcess> Processes { get; private set; }
+        internal long FailedCommandRetryDelay { get; set; }
+
+        public EventsPublisher EventsPublisher { get; private set; }
+        public IRouteMap Routes { get { return this; } }
+
         internal Context(CqrsEngine cqrsEngine, string name, long failedCommandRetryDelay)
             : base(name)
         {
@@ -16,20 +25,16 @@ namespace Lykke.Cqrs
             m_CqrsEngine = cqrsEngine;
             FailedCommandRetryDelay = failedCommandRetryDelay;
             EventsPublisher = new EventsPublisher(cqrsEngine, this);
-            CommandDispatcher = new CommandDispatcher(cqrsEngine.Log, Name, failedCommandRetryDelay);
-            EventDispatcher = new EventDispatcher(cqrsEngine.Log, Name);
+            CommandDispatcher = new CommandDispatcher(
+                cqrsEngine.Log,
+                Name,
+                cqrsEngine.EnableInputMessagesLogging,
+                failedCommandRetryDelay);
+            EventDispatcher = new EventDispatcher(
+                cqrsEngine.Log,
+                Name,
+                cqrsEngine.EnableInputMessagesLogging);
             Processes = new List<IProcess>();
-        }
-
-        public EventsPublisher EventsPublisher { get; private set; }
-        internal CommandDispatcher CommandDispatcher { get; private set; }
-        internal EventDispatcher EventDispatcher { get; private set; }
-        internal List<IProcess> Processes { get; private set; }
-        internal long FailedCommandRetryDelay { get; set; }
-
-        public IRouteMap Routes
-        {
-            get { return this; }
         }
 
         public void SendCommand<T>(T command, string remoteBoundedContext, uint priority = 0)

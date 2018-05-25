@@ -28,14 +28,9 @@ namespace Lykke.Cqrs
         }
 
         internal IEndpointResolver EndpointResolver { get; set; }
-        internal List<Context> Contexts
-        {
-            get { return m_Contexts; }
-        }
-        internal IDependencyResolver DependencyResolver
-        {
-            get { return m_DependencyResolver; }
-        }
+        internal List<Context> Contexts { get { return m_Contexts; } }
+        internal IDependencyResolver DependencyResolver { get { return m_DependencyResolver; } }
+        internal bool EnableInputMessagesLogging { get; private set; }
 
         public ILog Log { get; }
         public RouteMap DefaultRouteMap { get; private set; }
@@ -43,17 +38,31 @@ namespace Lykke.Cqrs
         public CqrsEngine(
             ILog log,
             IMessagingEngine messagingEngine,
-            IEndpointProvider endpointProvider,
             params IRegistration[] registrations)
-            : this(log, new DefaultDependencyResolver(), messagingEngine, endpointProvider, registrations)
+            : this(
+                log,
+                new DefaultDependencyResolver(),
+                messagingEngine,
+                new DefaultEndpointProvider(),
+                false,
+                true,
+                registrations)
         {
         }
 
         public CqrsEngine(
             ILog log,
             IMessagingEngine messagingEngine,
+            IEndpointProvider endpointProvider,
             params IRegistration[] registrations)
-            : this(log, new DefaultDependencyResolver(), messagingEngine,   new DefaultEndpointProvider(), registrations)
+            : this(
+                log,
+                new DefaultDependencyResolver(),
+                messagingEngine,
+                endpointProvider,
+                false,
+                true,
+                registrations)
         {
         }
 
@@ -63,7 +72,14 @@ namespace Lykke.Cqrs
             IMessagingEngine messagingEngine,
             IEndpointProvider endpointProvider,
             params IRegistration[] registrations)
-            : this(log, dependencyResolver, messagingEngine, endpointProvider, false, registrations)
+            : this(
+                log,
+                dependencyResolver,
+                messagingEngine,
+                endpointProvider,
+                false,
+                true,
+                registrations)
         {
         }
 
@@ -73,6 +89,25 @@ namespace Lykke.Cqrs
             IMessagingEngine messagingEngine,
             IEndpointProvider endpointProvider,
             bool createMissingEndpoints,
+            params IRegistration[] registrations)
+            : this(
+                log,
+                dependencyResolver,
+                messagingEngine,
+                endpointProvider,
+                createMissingEndpoints,
+                true,
+                registrations)
+        {
+        }
+
+        public CqrsEngine(
+            ILog log,
+            IDependencyResolver dependencyResolver,
+            IMessagingEngine messagingEngine,
+            IEndpointProvider endpointProvider,
+            bool createMissingEndpoints,
+            bool enableInputMessagesLogging,
             params IRegistration[] registrations)
         {
             Log = log;
@@ -84,6 +119,7 @@ namespace Lykke.Cqrs
             m_EndpointProvider = endpointProvider;
             m_Contexts = new List<Context>();
             DefaultRouteMap = new RouteMap("default");
+            EnableInputMessagesLogging = enableInputMessagesLogging;
             Init();
         }
 

@@ -16,6 +16,7 @@ namespace Lykke.Cqrs
         private readonly ILog _log;
         private readonly long m_FailedEventRetryDelay;
         private readonly Stopwatch m_SinceFirstEvent = new Stopwatch();
+        private readonly bool _enableInputEventsLogging;
 
         private long m_Counter = 0;
         private Func<object> m_BeforeBatchApply;
@@ -30,11 +31,31 @@ namespace Lykke.Cqrs
             long applyTimeout = 0,
             Func<object> beforeBatchApply = null,
             Action<object> afterBatchApply = null)
+            : this(
+                log,
+                failedEventRetryDelay,
+                true,
+                batchSize,
+                applyTimeout,
+                beforeBatchApply,
+                afterBatchApply)
         {
-            m_AfterBatchApply = afterBatchApply??(o => {});
-            m_BeforeBatchApply = beforeBatchApply ?? (() =>  null );
+        }
+
+        public BatchManager(
+            ILog log,
+            long failedEventRetryDelay,
+            bool enableInputEventsLogging,
+            int batchSize = 0,
+            long applyTimeout = 0,
+            Func<object> beforeBatchApply = null,
+            Action<object> afterBatchApply = null)
+        {
+            m_AfterBatchApply = afterBatchApply ?? (o => { });
+            m_BeforeBatchApply = beforeBatchApply ?? (() => null);
             _log = log;
             m_FailedEventRetryDelay = failedEventRetryDelay;
+            _enableInputEventsLogging = enableInputEventsLogging;
             ApplyTimeout = applyTimeout;
             m_BatchSize = batchSize;
         }
@@ -234,6 +255,10 @@ namespace Lykke.Cqrs
         {
             foreach(var batchHandlerInfo in batchHandlerInfos)
             {
+                if (_enableInputEventsLogging)
+                    _log.WriteInfoAsync(batchHandlerInfo.Item1, origin.EventType.Name, eventsArray.ToJson())
+                        .GetAwaiter().GetResult();
+
                 var telemtryOperation = TelemetryHelper.InitTelemetryOperation(
                     "Cqrs handle events",
                     batchHandlerInfo.Item1,
@@ -258,14 +283,16 @@ namespace Lykke.Cqrs
                 }
                 catch (Exception ex)
                 {
-                    TelemetryHelper.SubmitException(telemtryOperation, ex);
+                    _log.WriteErrorAsync(batchHandlerInfo.Item1, origin.EventType.Name, eventsArray.ToJson(), ex)
+                        .GetAwaiter().GetResult();
+
                     foreach (var result in results)
                     {
                         result.Retry = true;
                         result.RetryDelay = m_FailedEventRetryDelay;
                     }
-                    _log.WriteErrorAsync(batchHandlerInfo.Item1, origin.EventType.Name, eventsArray.ToJson(), ex)
-                        .GetAwaiter().GetResult();
+
+                    TelemetryHelper.SubmitException(telemtryOperation, ex);
                     return;
                 }
                 finally
@@ -287,6 +314,10 @@ namespace Lykke.Cqrs
                 var @event = eventsArray[i];
                 foreach (var handlerInfo in handlerInfos)
                 {
+                    if (_enableInputEventsLogging)
+                        _log.WriteInfoAsync(handlerInfo.Item1, origin.EventType.Name, @event?.ToJson() ?? "")
+                            .GetAwaiter().GetResult();
+
                     var telemtryOperation = TelemetryHelper.InitTelemetryOperation(
                         "Cqrs handle events",
                         handlerInfo.Item1,
@@ -305,11 +336,13 @@ namespace Lykke.Cqrs
                     }
                     catch (Exception ex)
                     {
-                        TelemetryHelper.SubmitException(telemtryOperation, ex);
+                        _log.WriteErrorAsync(handlerInfo.Item1, origin.EventType.Name, @event?.ToJson() ?? "", ex)
+                            .GetAwaiter().GetResult();
+
                         results[i].Retry = true;
                         results[i].RetryDelay = m_FailedEventRetryDelay;
-                        _log.WriteErrorAsync(handlerInfo.Item1, origin.EventType.Name, @event.ToJson(), ex)
-                            .GetAwaiter().GetResult();
+
+                        TelemetryHelper.SubmitException(telemtryOperation, ex);
                         break;
                     }
                     finally

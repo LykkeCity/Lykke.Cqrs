@@ -23,7 +23,7 @@ namespace Lykke.Cqrs.Tests
         public readonly List<Tuple<object, object>> HandledEvents = new List<Tuple<object, object>>();
         private int m_FailCount;
 
-        public EventHandlerWithBatchSupport(int failCount=0)
+        public EventHandlerWithBatchSupport(int failCount = 0)
         {
             m_FailCount = failCount;
         }
@@ -122,10 +122,10 @@ namespace Lykke.Cqrs.Tests
         {
             var dispatcher = new EventDispatcher(new LogToConsole(), "testBC");
             var handler = new EventHandler();
-            dispatcher.Wire("testBC",handler);
+            dispatcher.Wire("testBC", handler);
             dispatcher.Dispatch("testBC", "test", (delay, acknowledge) => { });
             dispatcher.Dispatch("testBC", 1, (delay, acknowledge) => { });
-            Assert.That(handler.HandledEvents, Is.EquivalentTo(new object[] { "test" ,1}), "Some events were not dispatched");
+            Assert.That(handler.HandledEvents, Is.EquivalentTo(new object[] { "test", 1}), "Some events were not dispatched");
         }
 
         [Test]
@@ -297,7 +297,6 @@ namespace Lykke.Cqrs.Tests
                                                    )
                     )
                 {
-                    
                     messagingEngine.Send(DateTime.Now, endpoint);
                     Thread.Sleep(20000);
                 }

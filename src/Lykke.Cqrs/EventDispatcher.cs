@@ -25,14 +25,24 @@ namespace Lykke.Cqrs
         private readonly Thread m_ApplyBatchesThread;
         private readonly BatchManager m_DefaultBatchManager;
         private readonly MethodInfo _getAwaiterInfo;
+        private readonly bool _enableInputEventsLogging;
 
         internal static long m_FailedEventRetryDelay = 60000;
 
         public EventDispatcher(ILog log, string boundedContext)
+            : this(log, boundedContext, true)
+        {
+        }
+
+        public EventDispatcher(
+            ILog log,
+            string boundedContext,
+            bool enableInputEventsLogging)
         {
             m_DefaultBatchManager = new BatchManager(log, m_FailedEventRetryDelay);
             _log = log;
             m_BoundedContext = boundedContext;
+            _enableInputEventsLogging = enableInputEventsLogging;
             m_ApplyBatchesThread = new Thread(() =>
             {
                 while (!m_Stop.WaitOne(1000))
@@ -40,7 +50,7 @@ namespace Lykke.Cqrs
                     ApplyBatches();
                 }
             });
-            m_ApplyBatchesThread.Name = string.Format("'{0}' bounded context batch event processing thread",boundedContext);
+            m_ApplyBatchesThread.Name = string.Format("'{0}' bounded context batch event processing thread", boundedContext);
 
             var taskMethods = typeof(Task<CommandHandlingResult>).GetMethods(BindingFlags.Public | BindingFlags.Instance);
             var awaiterResultType = typeof(TaskAwaiter<CommandHandlingResult>);

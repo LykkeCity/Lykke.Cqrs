@@ -73,7 +73,7 @@ namespace Lykke.Cqrs.Tests
                     messagingEngine.Send("test1", new Endpoint("InMemory", "exchange1", serializationFormat: "json"));
                     messagingEngine.Send("test2", new Endpoint("InMemory", "exchange2", serializationFormat: "json"));
                     messagingEngine.Send("test3", new Endpoint("InMemory", "exchange3", serializationFormat: "json"));
-                    Thread.Sleep(5000);
+                    Thread.Sleep(6000);
                     Assert.That(commandHandler.AcceptedCommands, Is.EquivalentTo(new[] { "test1", "test2" }));
                 }
             }
@@ -119,7 +119,7 @@ namespace Lykke.Cqrs.Tests
             }
         }
 
-        [Test]
+        [Test, Ignore("integration")]
         public void SagaTest()
         {
             using (
