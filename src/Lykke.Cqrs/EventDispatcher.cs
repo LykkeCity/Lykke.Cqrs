@@ -25,7 +25,7 @@ namespace Lykke.Cqrs
         private readonly Thread m_ApplyBatchesThread;
         private readonly BatchManager m_DefaultBatchManager;
         private readonly MethodInfo _getAwaiterInfo;
-        private readonly bool _enableInputEventsLogging;
+        private readonly bool _enableEventsLogging;
 
         internal static long m_FailedEventRetryDelay = 60000;
 
@@ -37,12 +37,12 @@ namespace Lykke.Cqrs
         public EventDispatcher(
             ILog log,
             string boundedContext,
-            bool enableInputEventsLogging)
+            bool enableEventsLogging)
         {
             m_DefaultBatchManager = new BatchManager(log, m_FailedEventRetryDelay);
             _log = log;
             m_BoundedContext = boundedContext;
-            _enableInputEventsLogging = enableInputEventsLogging;
+            _enableEventsLogging = enableEventsLogging;
             m_ApplyBatchesThread = new Thread(() =>
             {
                 while (!m_Stop.WaitOne(1000))

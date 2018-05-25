@@ -20,7 +20,7 @@ namespace Lykke.Cqrs
         private readonly string m_BoundedContext;
         private readonly ILog _log;
         private readonly MethodInfo _getAwaiterInfo;
-        private readonly bool _enableInputCommandsLogging;
+        private readonly bool _enableCommandsLogging;
 
         private long m_FailedCommandRetryDelay;
 
@@ -35,13 +35,13 @@ namespace Lykke.Cqrs
         public CommandDispatcher(
             ILog log,
             string boundedContext,
-            bool enableInputCommandsLogging,
+            bool enableCommandsLogging,
             long failedCommandRetryDelay = 60000)
         {
             _log = log;
             m_FailedCommandRetryDelay = failedCommandRetryDelay;
             m_BoundedContext = boundedContext;
-            _enableInputCommandsLogging = enableInputCommandsLogging;
+            _enableCommandsLogging = enableCommandsLogging;
 
             var taskMethods = typeof(Task<CommandHandlingResult>).GetMethods(BindingFlags.Public | BindingFlags.Instance);
             var awaiterResultType = typeof(TaskAwaiter<CommandHandlingResult>);
@@ -219,7 +219,7 @@ namespace Lykke.Cqrs
             string route)
         {
             string commandType = command.GetType().Name;
-            if (_enableInputCommandsLogging)
+            if (_enableCommandsLogging)
                 _log.WriteInfoAsync(handlerTypeName, commandType, command?.ToJson() ?? "")
                     .GetAwaiter().GetResult();
 

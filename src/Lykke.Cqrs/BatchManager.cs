@@ -16,7 +16,7 @@ namespace Lykke.Cqrs
         private readonly ILog _log;
         private readonly long m_FailedEventRetryDelay;
         private readonly Stopwatch m_SinceFirstEvent = new Stopwatch();
-        private readonly bool _enableInputEventsLogging;
+        private readonly bool _enableEventsLogging;
 
         private long m_Counter = 0;
         private Func<object> m_BeforeBatchApply;
@@ -45,7 +45,7 @@ namespace Lykke.Cqrs
         public BatchManager(
             ILog log,
             long failedEventRetryDelay,
-            bool enableInputEventsLogging,
+            bool enableEventsLogging,
             int batchSize = 0,
             long applyTimeout = 0,
             Func<object> beforeBatchApply = null,
@@ -55,7 +55,7 @@ namespace Lykke.Cqrs
             m_BeforeBatchApply = beforeBatchApply ?? (() => null);
             _log = log;
             m_FailedEventRetryDelay = failedEventRetryDelay;
-            _enableInputEventsLogging = enableInputEventsLogging;
+            _enableEventsLogging = enableEventsLogging;
             ApplyTimeout = applyTimeout;
             m_BatchSize = batchSize;
         }
@@ -255,7 +255,7 @@ namespace Lykke.Cqrs
         {
             foreach(var batchHandlerInfo in batchHandlerInfos)
             {
-                if (_enableInputEventsLogging)
+                if (_enableEventsLogging)
                     _log.WriteInfoAsync(batchHandlerInfo.Item1, origin.EventType.Name, eventsArray.ToJson())
                         .GetAwaiter().GetResult();
 
@@ -314,7 +314,7 @@ namespace Lykke.Cqrs
                 var @event = eventsArray[i];
                 foreach (var handlerInfo in handlerInfos)
                 {
-                    if (_enableInputEventsLogging)
+                    if (_enableEventsLogging)
                         _log.WriteInfoAsync(handlerInfo.Item1, origin.EventType.Name, @event?.ToJson() ?? "")
                             .GetAwaiter().GetResult();
 
