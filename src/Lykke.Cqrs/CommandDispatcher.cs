@@ -218,7 +218,7 @@ namespace Lykke.Cqrs
             Endpoint commandOriginEndpoint,
             string route)
         {
-            string commandType = command.GetType().Name;
+            string commandType = command?.GetType().Name ?? "Unknown command type";
             if (_enableCommandsLogging)
                 _log.WriteInfoAsync(handlerTypeName, commandType, command?.ToJson(), "")
                     .GetAwaiter().GetResult();
