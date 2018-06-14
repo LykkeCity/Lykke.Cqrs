@@ -193,7 +193,7 @@ namespace Lykke.Cqrs
         {
             if (!m_handlers.TryGetValue(command.GetType(), out var handlerInfo))
             {
-                _log.WriteWarningAsync(
+                _log.WriteWarning(
                     nameof(CommandDispatcher),
                     nameof(Dispatch),
                     $"Failed to handle command {command} in bound context {m_BoundedContext}, no handler was registered for it");
@@ -220,8 +220,7 @@ namespace Lykke.Cqrs
         {
             string commandType = command.GetType().Name;
             if (_enableCommandsLogging)
-                _log.WriteInfoAsync(handlerTypeName, commandType, command?.ToJson() ?? "")
-                    .GetAwaiter().GetResult();
+                _log.WriteInfo(handlerTypeName, command?.ToJson() ?? "", commandType);
 
             var telemtryOperation = TelemetryHelper.InitTelemetryOperation(
                 "Cqrs handle command",

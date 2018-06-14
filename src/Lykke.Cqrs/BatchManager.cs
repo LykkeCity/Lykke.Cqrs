@@ -180,7 +180,7 @@ namespace Lykke.Cqrs
                     nameof(EventDispatcher),
                     nameof(DoHandle),
                     "Failed to handle events batch of type " + origin.EventType.Name,
-                    ex);
+                    ex).GetAwaiter().GetResult();
                 foreach (var result in results)
                 {
                     result.Retry = true;
@@ -226,7 +226,7 @@ namespace Lykke.Cqrs
                     nameof(EventDispatcher),
                     nameof(DoHandle),
                     "Failed to handle events batch of type " + origin.EventType.Name,
-                    ex);
+                    ex).GetAwaiter().GetResult();
                 foreach (var result in results)
                 {
                     result.Retry = true;
@@ -256,8 +256,7 @@ namespace Lykke.Cqrs
             foreach(var batchHandlerInfo in batchHandlerInfos)
             {
                 if (_enableEventsLogging)
-                    _log.WriteInfoAsync(batchHandlerInfo.Item1, origin.EventType.Name, $"Events: {eventsArray.ToJson()}")
-                        .GetAwaiter().GetResult();
+                    _log.WriteInfo(batchHandlerInfo.Item1, $"Events: {eventsArray.ToJson()}", origin.EventType.Name);
 
                 var telemtryOperation = TelemetryHelper.InitTelemetryOperation(
                     "Cqrs handle events",
@@ -315,8 +314,7 @@ namespace Lykke.Cqrs
                 foreach (var handlerInfo in handlerInfos)
                 {
                     if (_enableEventsLogging)
-                        _log.WriteInfoAsync(handlerInfo.Item1, origin.EventType.Name, @event?.ToJson() ?? "")
-                            .GetAwaiter().GetResult();
+                        _log.WriteInfo(handlerInfo.Item1, @event?.ToJson() ?? "", origin.EventType.Name);
 
                     var telemtryOperation = TelemetryHelper.InitTelemetryOperation(
                         "Cqrs handle events",
