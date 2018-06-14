@@ -256,7 +256,8 @@ namespace Lykke.Cqrs
             foreach(var batchHandlerInfo in batchHandlerInfos)
             {
                 if (_enableEventsLogging)
-                    _log.WriteInfo(batchHandlerInfo.Item1, $"Events: {eventsArray.ToJson()}", origin.EventType.Name);
+                    _log.WriteInfoAsync(batchHandlerInfo.Item1, origin.EventType.Name, $"Events: {eventsArray.ToJson()}", "")
+                        .GetAwaiter().GetResult();
 
                 var telemtryOperation = TelemetryHelper.InitTelemetryOperation(
                     "Cqrs handle events",
@@ -314,7 +315,8 @@ namespace Lykke.Cqrs
                 foreach (var handlerInfo in handlerInfos)
                 {
                     if (_enableEventsLogging)
-                        _log.WriteInfo(handlerInfo.Item1, @event?.ToJson() ?? "", origin.EventType.Name);
+                        _log.WriteInfoAsync(handlerInfo.Item1, origin.EventType.Name, @event?.ToJson(), "")
+                            .GetAwaiter().GetResult();
 
                     var telemtryOperation = TelemetryHelper.InitTelemetryOperation(
                         "Cqrs handle events",
