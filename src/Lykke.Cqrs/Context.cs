@@ -6,40 +6,34 @@ namespace Lykke.Cqrs
 {
     public class Context : RouteMap, IDisposable, ICommandSender
     {
-        private readonly CqrsEngine m_CqrsEngine;
-        private readonly Dictionary<string, Destination> m_TempDestinations = new Dictionary<string, Destination>();
+        private readonly CqrsEngine _cqrsEngine;
+        private readonly Dictionary<string, Destination> _tempDestinations = new Dictionary<string, Destination>();
 
-        internal CommandDispatcher CommandDispatcher { get; private set; }
-        internal EventDispatcher EventDispatcher { get; private set; }
-        internal List<IProcess> Processes { get; private set; }
-        internal long FailedCommandRetryDelay { get; set; }
+        internal CommandDispatcher CommandDispatcher { get; }
+        internal EventDispatcher EventDispatcher { get; }
+        internal List<IProcess> Processes { get; }
+        internal long FailedCommandRetryDelay { get; }
 
-        public EventsPublisher EventsPublisher { get; private set; }
-        public IRouteMap Routes { get { return this; } }
+        public EventsPublisher EventsPublisher { get; }
+        public IRouteMap Routes => this;
 
         internal Context(CqrsEngine cqrsEngine, string name, long failedCommandRetryDelay)
             : base(name)
         {
             if (name.ToLower() == "default")
-                throw new ArgumentException("default is reserved name", "name");
-            m_CqrsEngine = cqrsEngine;
+                throw new ArgumentException("default is reserved name", nameof(name));
+            _cqrsEngine = cqrsEngine;
             FailedCommandRetryDelay = failedCommandRetryDelay;
             EventsPublisher = new EventsPublisher(cqrsEngine, this);
-            CommandDispatcher = new CommandDispatcher(
-                cqrsEngine.Log,
-                Name,
-                cqrsEngine.EnableInputMessagesLogging,
-                failedCommandRetryDelay);
-            EventDispatcher = new EventDispatcher(
-                cqrsEngine.Log,
-                Name,
-                cqrsEngine.EnableInputMessagesLogging);
+            CommandDispatcher = cqrsEngine.CreateCommandsDispatcher(Name, failedCommandRetryDelay);
+            EventDispatcher = cqrsEngine.CreateEventsDispatcher(Name);
+
             Processes = new List<IProcess>();
         }
 
         public void SendCommand<T>(T command, string remoteBoundedContext, uint priority = 0)
         {
-            m_CqrsEngine.SendCommand(command, Name, remoteBoundedContext, priority);
+            _cqrsEngine.SendCommand(command, Name, remoteBoundedContext, priority);
         }
 
         public void Dispose()
@@ -50,12 +44,12 @@ namespace Lykke.Cqrs
 
         internal bool GetTempDestination(string transportId, Func<Destination> generate, out Destination destination)
         {
-            lock (m_TempDestinations)
+            lock (_tempDestinations)
             {
-                if (!m_TempDestinations.TryGetValue(transportId, out destination))
+                if (!_tempDestinations.TryGetValue(transportId, out destination))
                 {
                     destination = generate();
-                    m_TempDestinations[transportId] = destination;
+                    _tempDestinations[transportId] = destination;
                     return true;
                 }
             }

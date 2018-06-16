@@ -3,12 +3,15 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Common.Log;
+using JetBrains.Annotations;
+using Lykke.Common.Log;
 using Lykke.Messaging;
 using Lykke.Messaging.Configuration;
 using Lykke.Messaging.Contract;
 using Lykke.Messaging.RabbitMq;
 using Lykke.Cqrs.Configuration;
+using Lykke.Logs;
+using Lykke.Logs.Loggers.LykkeConsole;
 using Moq;
 using NUnit.Framework;
 
@@ -21,17 +24,17 @@ namespace Lykke.Cqrs.Tests
     class EventHandlerWithBatchSupport 
     {
         public readonly List<Tuple<object, object>> HandledEvents = new List<Tuple<object, object>>();
-        private int m_FailCount;
+        private int _failCount;
 
         public EventHandlerWithBatchSupport(int failCount = 0)
         {
-            m_FailCount = failCount;
+            _failCount = failCount;
         }
 
         public CommandHandlingResult Handle(DateTime e, FakeBatchContext batchContext)
         {
             HandledEvents.Add(Tuple.Create<object, object>(e, batchContext));
-            var retry = Interlocked.Decrement(ref m_FailCount) >= 0;
+            var retry = Interlocked.Decrement(ref _failCount) >= 0;
             Console.WriteLine("Retry {0}",retry);
             return new CommandHandlingResult() {Retry = retry, RetryDelay = 10};
         }
@@ -55,27 +58,23 @@ namespace Lykke.Cqrs.Tests
 
     class EventHandler
     {
-        private bool m_Fail;
+        private readonly bool _fail;
 
         public readonly List<object> HandledEvents = new List<object>();
 
-        public bool Fail
-        {
-            get { return m_Fail; }
-            set { m_Fail = value; }
-        }
 
         public bool FailOnce { get; set; }
 
         public EventHandler(bool fail = false)
         {
-            m_Fail = fail;
+            _fail = fail;
         }
 
+        [UsedImplicitly]
         public void Handle(string e)
         {
             HandledEvents.Add(e);
-            if (m_Fail || FailOnce)
+            if (_fail || FailOnce)
             {
                 FailOnce = false;
                 throw new Exception();
@@ -87,7 +86,7 @@ namespace Lykke.Cqrs.Tests
             return e.Select(i =>
             {
                 HandledEvents.Add(i);
-                return new CommandHandlingResult {Retry = m_Fail, RetryDelay = 600};
+                return new CommandHandlingResult {Retry = _fail, RetryDelay = 600};
             }).ToArray();
         }
 
@@ -100,7 +99,8 @@ namespace Lykke.Cqrs.Tests
 
     class EventHandlerWithAsyncHandle
     {
-        public async Task Handle(string evt)
+        [UsedImplicitly]
+        public Task Handle(string evt)
         {
             throw new InvalidOperationException();
         }
@@ -108,6 +108,7 @@ namespace Lykke.Cqrs.Tests
 
     class EventHandlerWithSyncHandle
     {
+        [UsedImplicitly]
         public Task Handle(string evt)
         {
             throw new InvalidOperationException();
@@ -115,12 +116,24 @@ namespace Lykke.Cqrs.Tests
     }
 
     [TestFixture]
-    public class EventDispatcherTests
+    public class EventDispatcherTests : IDisposable
     {
+        private readonly ILogFactory _logFactory;
+
+        public EventDispatcherTests()
+        {
+            _logFactory = LogFactory.Create().AddUnbufferedConsole();
+        }
+
+        public void Dispose()
+        {
+            _logFactory?.Dispose();
+        }
+        
         [Test]
         public void WireTest()
         {
-            var dispatcher = new EventDispatcher(new LogToConsole(), "testBC");
+            var dispatcher = new EventDispatcher(_logFactory, "testBC");
             var handler = new EventHandler();
             dispatcher.Wire("testBC", handler);
             dispatcher.Dispatch("testBC", "test", (delay, acknowledge) => { });
@@ -131,7 +144,7 @@ namespace Lykke.Cqrs.Tests
         [Test]
         public void MultipleHandlersDispatchTest()
         {
-            var dispatcher = new EventDispatcher(new LogToConsole(), "testBC");
+            var dispatcher = new EventDispatcher(_logFactory, "testBC");
             var handler1 = new EventHandler();
             var handler2 = new EventHandler();
             dispatcher.Wire("testBC",handler1);
@@ -144,7 +157,7 @@ namespace Lykke.Cqrs.Tests
         [Test]
         public void FailingHandlersDispatchTest()
         {
-            var dispatcher=new EventDispatcher(new LogToConsole(), "testBC");
+            var dispatcher=new EventDispatcher(_logFactory, "testBC");
             var handler1 = new EventHandler();
             var handler2 = new EventHandler(true);
             dispatcher.Wire("testBC",handler1);
@@ -154,13 +167,13 @@ namespace Lykke.Cqrs.Tests
             Assert.That(handler1.HandledEvents, Is.EquivalentTo(new[] { "test" }), "Event was not dispatched");
             Assert.That(result,Is.Not.Null,"fail was not reported");
             Assert.That(result.Item2,Is.False,"fail was not reported");
-            Assert.That(result.Item1, Is.EqualTo(EventDispatcher.m_FailedEventRetryDelay), "fail was not reported");
+            Assert.That(result.Item1, Is.EqualTo(EventDispatcher.FailedEventRetryDelay), "fail was not reported");
         }
 
         [Test]
         public void RetryingHandlersDispatchTest()
         {
-            var dispatcher=new EventDispatcher(new LogToConsole(), "testBC");
+            var dispatcher=new EventDispatcher(_logFactory, "testBC");
             var handler = new EventHandler();
             dispatcher.Wire("testBC", handler);
             Tuple<long, bool> result=null;
@@ -173,7 +186,7 @@ namespace Lykke.Cqrs.Tests
         [Test]
         public void BatchDispatchTest()
         {
-            var dispatcher = new EventDispatcher(new LogToConsole(), "testBC");
+            var dispatcher = new EventDispatcher(_logFactory, "testBC");
             var handler = new EventHandler();
             dispatcher.Wire("testBC", handler);
             Tuple<long, bool> result = null;
@@ -193,16 +206,15 @@ namespace Lykke.Cqrs.Tests
         [Test]
         public void BatchDispatchTriggeringBySizeTest()
         {
-            var dispatcher = new EventDispatcher(new LogToConsole(), "testBC");
+            var dispatcher = new EventDispatcher(_logFactory, "testBC");
             var handler = new EventHandlerWithBatchSupport();
             dispatcher.Wire("testBC", handler, 3, 0, 
                 typeof(FakeBatchContext),
                 h => ((EventHandlerWithBatchSupport)h).OnBatchStart(),
                 (h, c) => ((EventHandlerWithBatchSupport)h).OnBatchFinish((FakeBatchContext)c));
-            Tuple<long, bool> result = null;
             dispatcher.Dispatch("testBC", new[]
             {
-                Tuple.Create<object,AcknowledgeDelegate>(new DateTime(2016,3,1), (delay, acknowledge) => {result = Tuple.Create(delay, acknowledge);  }),
+                Tuple.Create<object,AcknowledgeDelegate>(new DateTime(2016,3,1), (delay, acknowledge) => {Tuple.Create(delay, acknowledge);  }),
                 Tuple.Create<object,AcknowledgeDelegate>(new DateTime(2016,3,2), (delay, acknowledge) => { }),
             });
             Assert.That(handler.HandledEvents.Count, Is.EqualTo(0), "Events were delivered before batch is filled");
@@ -220,13 +232,12 @@ namespace Lykke.Cqrs.Tests
         [Test]
         public void BatchDispatchTriggeringByTimeoutTest()
         {
-            var dispatcher = new EventDispatcher(new LogToConsole(), "testBC");
+            var dispatcher = new EventDispatcher(_logFactory, "testBC");
             var handler = new EventHandlerWithBatchSupport();
             dispatcher.Wire("testBC", handler, 3, 1, typeof(FakeBatchContext), h => ((EventHandlerWithBatchSupport)h).OnBatchStart(), (h, c) => ((EventHandlerWithBatchSupport)h).OnBatchFinish((FakeBatchContext)c));
-            Tuple<long, bool> result = null;
             dispatcher.Dispatch("testBC", new[]
             {
-                Tuple.Create<object,AcknowledgeDelegate>(new DateTime(2016,3,1), (delay, acknowledge) => {result = Tuple.Create(delay, acknowledge);  }),
+                Tuple.Create<object,AcknowledgeDelegate>(new DateTime(2016,3,1), (delay, acknowledge) => {Tuple.Create(delay, acknowledge);  }),
                 Tuple.Create<object,AcknowledgeDelegate>(new DateTime(2016,3,2), (delay, acknowledge) => { })
             });
             Assert.That(handler.HandledEvents.Count, Is.EqualTo(0), "Events were delivered before batch apply timeoout");
@@ -241,7 +252,7 @@ namespace Lykke.Cqrs.Tests
         [Test]
         public void BatchDispatchUnackTest()
         {
-            var dispatcher = new EventDispatcher(new LogToConsole(), "testBC");
+            var dispatcher = new EventDispatcher(_logFactory, "testBC");
             var handler = new EventHandlerWithBatchSupport(1);
             dispatcher.Wire("testBC", handler, 3, 0,
                 typeof(FakeBatchContext),
@@ -276,26 +287,25 @@ namespace Lykke.Cqrs.Tests
             using (
                 var messagingEngine =
                     new MessagingEngine(
-                        new LogToConsole(),
+                        _logFactory,
                         new TransportResolver(new Dictionary<string, TransportInfo>
                             {
                                 {"RabbitMq", new TransportInfo("amqp://localhost", "guest", "guest", null, "RabbitMq")}
-                            }), new RabbitMqTransportFactory()))
+                            }), new RabbitMqTransportFactory(_logFactory)))
             {
-                var tmpQueue = messagingEngine.CreateTemporaryDestination("RabbitMq",null);
+                messagingEngine.CreateTemporaryDestination("RabbitMq",null);
            
                 var endpoint = new Endpoint("RabbitMq", "testExchange" , "testQueue", true, "json");
                 endpointProvider.Setup(r => r.Get("route")).Returns(endpoint);
                 endpointProvider.Setup(r => r.Contains("route")).Returns(true);
 
-                using (var engine = new CqrsEngine(new LogToConsole(), new DefaultDependencyResolver(),messagingEngine, endpointProvider.Object,false,
-                                                   Register.BoundedContext("bc").ListeningEvents(typeof(DateTime)).From("other").On("route")
-                                                   .WithProjection(handler, "other",1,0,
-                                                                   h => ((EventHandlerWithBatchSupport)h).OnBatchStart(),
-                                                                   (h, c) => ((EventHandlerWithBatchSupport)h).OnBatchFinish((FakeBatchContext)c)
-                                                                   )
-                                                   )
-                    )
+                using (new CqrsEngine(_logFactory, new DefaultDependencyResolver(),messagingEngine, endpointProvider.Object,false,
+                    Register.BoundedContext("bc").ListeningEvents(typeof(DateTime)).From("other").On("route")
+                        .WithProjection(handler, "other",1,0,
+                            h => ((EventHandlerWithBatchSupport)h).OnBatchStart(),
+                            (h, c) => ((EventHandlerWithBatchSupport)h).OnBatchFinish((FakeBatchContext)c)
+                        )
+                ))
                 {
                     messagingEngine.Send(DateTime.Now, endpoint);
                     Thread.Sleep(20000);
@@ -306,7 +316,7 @@ namespace Lykke.Cqrs.Tests
         [Test]
         public void TestExceptionForAsyncEventHadler()
         {
-            var dispatcher = new EventDispatcher(new LogToConsole(), "testBC");
+            var dispatcher = new EventDispatcher(_logFactory, "testBC");
             var asyncHandler = new EventHandlerWithAsyncHandle();
             dispatcher.Wire("testBC", asyncHandler);
             int failedCount = 0;
@@ -321,7 +331,7 @@ namespace Lykke.Cqrs.Tests
         [Test]
         public void TestExceptionForSyncEventHadler()
         {
-            var dispatcher = new EventDispatcher(new LogToConsole(), "testBC");
+            var dispatcher = new EventDispatcher(_logFactory, "testBC");
             var syncHandler = new EventHandlerWithSyncHandle();
             dispatcher.Wire("testBC", syncHandler);
             int failedCount = 0;

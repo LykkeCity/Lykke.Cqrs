@@ -5,25 +5,27 @@ using System.Linq;
 using Lykke.Messaging.Contract;
 using Common;
 using Common.Log;
+using Lykke.Common.Log;
 using Lykke.Cqrs.Utils;
 
 namespace Lykke.Cqrs
 {
     internal class BatchManager
     {
-        private readonly List<Action<object>> m_Events = new List<Action<object>>();
-        private readonly int m_BatchSize;
+        private readonly List<Action<object>> _events = new List<Action<object>>();
+        private readonly int _batchSize;
         private readonly ILog _log;
-        private readonly long m_FailedEventRetryDelay;
-        private readonly Stopwatch m_SinceFirstEvent = new Stopwatch();
+        private readonly long _failedEventRetryDelay;
+        private readonly Stopwatch _sinceFirstEvent = new Stopwatch();
         private readonly bool _enableEventsLogging;
+        private readonly Func<object> _beforeBatchApply;
+        private readonly Action<object> _afterBatchApply;
 
-        private long m_Counter = 0;
-        private Func<object> m_BeforeBatchApply;
-        private Action<object> m_AfterBatchApply;
+        private long _counter;
+        
+        public long ApplyTimeout { get; }
 
-        public long ApplyTimeout { get; private set; }
-
+        [Obsolete]
         public BatchManager(
             ILog log,
             long failedEventRetryDelay,
@@ -42,7 +44,8 @@ namespace Lykke.Cqrs
         {
         }
 
-        public BatchManager(
+        [Obsolete]
+        private BatchManager(
             ILog log,
             long failedEventRetryDelay,
             bool enableEventsLogging,
@@ -51,13 +54,49 @@ namespace Lykke.Cqrs
             Func<object> beforeBatchApply = null,
             Action<object> afterBatchApply = null)
         {
-            m_AfterBatchApply = afterBatchApply ?? (o => { });
-            m_BeforeBatchApply = beforeBatchApply ?? (() => null);
+            _afterBatchApply = afterBatchApply ?? (o => { });
+            _beforeBatchApply = beforeBatchApply ?? (() => null);
             _log = log;
-            m_FailedEventRetryDelay = failedEventRetryDelay;
+            _failedEventRetryDelay = failedEventRetryDelay;
             _enableEventsLogging = enableEventsLogging;
             ApplyTimeout = applyTimeout;
-            m_BatchSize = batchSize;
+            _batchSize = batchSize;
+        }
+
+        public BatchManager(
+            ILogFactory logFactory,
+            long failedEventRetryDelay,
+            int batchSize = 0,
+            long applyTimeout = 0,
+            Func<object> beforeBatchApply = null,
+            Action<object> afterBatchApply = null)
+            : this(
+                logFactory,
+                failedEventRetryDelay,
+                true,
+                batchSize,
+                applyTimeout,
+                beforeBatchApply,
+                afterBatchApply)
+        {
+        }
+
+        private BatchManager(
+            ILogFactory logFactory,
+            long failedEventRetryDelay,
+            bool enableEventsLogging,
+            int batchSize = 0,
+            long applyTimeout = 0,
+            Func<object> beforeBatchApply = null,
+            Action<object> afterBatchApply = null)
+        {
+            _afterBatchApply = afterBatchApply ?? (o => { });
+            _beforeBatchApply = beforeBatchApply ?? (() => null);
+            _log = logFactory.CreateLog(this);
+            _failedEventRetryDelay = failedEventRetryDelay;
+            _enableEventsLogging = enableEventsLogging;
+            ApplyTimeout = applyTimeout;
+            _batchSize = batchSize;
         }
 
         public void BatchHandle(
@@ -68,7 +107,7 @@ namespace Lykke.Cqrs
             if(events.Length == 0)
                 return;
 
-            if (m_BatchSize == 0 && ApplyTimeout == 0)
+            if (_batchSize == 0 && ApplyTimeout == 0)
             {
                 DoBatchHandle(
                     batchHandlerInfos,
@@ -78,16 +117,16 @@ namespace Lykke.Cqrs
                 return;
             }
 
-            lock (m_Events)
+            lock (_events)
             {
-                m_Events.Add(batchContext => DoBatchHandle(
+                _events.Add(batchContext => DoBatchHandle(
                     batchHandlerInfos,
                     events,
                     origin,
                     batchContext));
-                if (m_Counter == 0 && ApplyTimeout != 0)
-                    m_SinceFirstEvent.Start();
-                m_Counter += events.Length;
+                if (_counter == 0 && ApplyTimeout != 0)
+                    _sinceFirstEvent.Start();
+                _counter += events.Length;
                 ApplyBatchIfRequired();
             }
         }
@@ -100,7 +139,7 @@ namespace Lykke.Cqrs
             if (events.Length == 0)
                 return;
 
-            if (m_BatchSize == 0 && ApplyTimeout == 0)
+            if (_batchSize == 0 && ApplyTimeout == 0)
             {
                 DoHandle(
                     handlerInfos,
@@ -110,16 +149,16 @@ namespace Lykke.Cqrs
                 return;
             }
 
-            lock (m_Events)
+            lock (_events)
             {
-                m_Events.Add(batchContext => DoHandle(
+                _events.Add(batchContext => DoHandle(
                     handlerInfos,
                     events,
                     origin,
                     batchContext));
-                if (m_Counter == 0 && ApplyTimeout != 0)
-                    m_SinceFirstEvent.Start();
-                m_Counter += events.Length;
+                if (_counter == 0 && ApplyTimeout != 0)
+                    _sinceFirstEvent.Start();
+                _counter += events.Length;
                 ApplyBatchIfRequired();
             }
         }
@@ -128,30 +167,30 @@ namespace Lykke.Cqrs
         {
             Action<object>[] handles = new Action<object>[0];
 
-            lock (m_Events)
+            lock (_events)
             {
-                if (m_Counter == 0)
+                if (_counter == 0)
                     return;
 
-                if ((m_Counter >= m_BatchSize && m_BatchSize != 0)
-                    || (m_SinceFirstEvent.ElapsedMilliseconds > ApplyTimeout && ApplyTimeout != 0)
+                if ((_counter >= _batchSize && _batchSize != 0)
+                    || (_sinceFirstEvent.ElapsedMilliseconds > ApplyTimeout && ApplyTimeout != 0)
                     || force)
                 {
-                    handles = m_Events.ToArray();
-                    m_Events.Clear();
-                    m_Counter = 0;
-                    m_SinceFirstEvent.Reset();
+                    handles = _events.ToArray();
+                    _events.Clear();
+                    _counter = 0;
+                    _sinceFirstEvent.Reset();
                 }
             }
             if (!handles.Any())
                 return;
 
-            var batchContext = m_BeforeBatchApply();
+            var batchContext = _beforeBatchApply();
             foreach (var handle in handles)
             {
                 handle(batchContext);
             }
-            m_AfterBatchApply(batchContext);
+            _afterBatchApply(batchContext);
         }
 
         private void DoBatchHandle(
@@ -184,7 +223,7 @@ namespace Lykke.Cqrs
                 foreach (var result in results)
                 {
                     result.Retry = true;
-                    result.RetryDelay = m_FailedEventRetryDelay;
+                    result.RetryDelay = _failedEventRetryDelay;
                 }
             }
 
@@ -230,7 +269,7 @@ namespace Lykke.Cqrs
                 foreach (var result in results)
                 {
                     result.Retry = true;
-                    result.RetryDelay = m_FailedEventRetryDelay;
+                    result.RetryDelay = _failedEventRetryDelay;
                 }
             }
 
@@ -289,7 +328,7 @@ namespace Lykke.Cqrs
                     foreach (var result in results)
                     {
                         result.Retry = true;
-                        result.RetryDelay = m_FailedEventRetryDelay;
+                        result.RetryDelay = _failedEventRetryDelay;
                     }
 
                     TelemetryHelper.SubmitException(telemtryOperation, ex);
@@ -340,7 +379,7 @@ namespace Lykke.Cqrs
                             .GetAwaiter().GetResult();
 
                         results[i].Retry = true;
-                        results[i].RetryDelay = m_FailedEventRetryDelay;
+                        results[i].RetryDelay = _failedEventRetryDelay;
 
                         TelemetryHelper.SubmitException(telemtryOperation, ex);
                         break;

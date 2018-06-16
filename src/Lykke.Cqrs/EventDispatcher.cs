@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Runtime.CompilerServices;
 using Common.Log;
+using Lykke.Common.Log;
 using Lykke.Messaging.Contract;
 using ThreadState = System.Threading.ThreadState;
 
@@ -15,42 +16,67 @@ namespace Lykke.Cqrs
 {
     internal class EventDispatcher : IDisposable
     {
-        private readonly Dictionary<EventOrigin, List<((string, Func<object[], object, CommandHandlingResult[]>), BatchManager)>> m_batchHandlerInfos =
+        internal const long FailedEventRetryDelay = 60000;
+
+        private readonly Dictionary<EventOrigin, List<((string, Func<object[], object, CommandHandlingResult[]>), BatchManager)>> _batchHandlerInfos =
             new Dictionary<EventOrigin, List<((string, Func<object[], object, CommandHandlingResult[]>), BatchManager)>>();
-        private readonly Dictionary<EventOrigin, List<((string, Func<object, object, CommandHandlingResult>), BatchManager)>> m_handlerInfos =
+        private readonly Dictionary<EventOrigin, List<((string, Func<object, object, CommandHandlingResult>), BatchManager)>> _handlerInfos =
             new Dictionary<EventOrigin, List<((string, Func<object, object, CommandHandlingResult>), BatchManager)>>();
         private readonly ILog _log;
-        private readonly string m_BoundedContext;
-        private readonly ManualResetEvent m_Stop = new ManualResetEvent(false);
-        private readonly Thread m_ApplyBatchesThread;
-        private readonly BatchManager m_DefaultBatchManager;
+        private readonly string _boundedContext;
+        private readonly ManualResetEvent _stop = new ManualResetEvent(false);
+        private readonly Thread _applyBatchesThread;
+        private readonly BatchManager _defaultBatchManager;
         private readonly MethodInfo _getAwaiterInfo;
         private readonly bool _enableEventsLogging;
+        private readonly ILogFactory _logFactory;
 
-        internal static long m_FailedEventRetryDelay = 60000;
-
-        public EventDispatcher(ILog log, string boundedContext)
-            : this(log, boundedContext, true)
-        {
-        }
-
+        [Obsolete]
         public EventDispatcher(
             ILog log,
             string boundedContext,
-            bool enableEventsLogging)
+            bool enableEventsLogging = true)
         {
-            m_DefaultBatchManager = new BatchManager(log, m_FailedEventRetryDelay);
+            _defaultBatchManager = new BatchManager(log, FailedEventRetryDelay);
             _log = log;
-            m_BoundedContext = boundedContext;
+            _boundedContext = boundedContext;
             _enableEventsLogging = enableEventsLogging;
-            m_ApplyBatchesThread = new Thread(() =>
+            _applyBatchesThread = new Thread(() =>
             {
-                while (!m_Stop.WaitOne(1000))
+                while (!_stop.WaitOne(1000))
                 {
                     ApplyBatches();
                 }
-            });
-            m_ApplyBatchesThread.Name = string.Format("'{0}' bounded context batch event processing thread", boundedContext);
+            })
+            {
+                Name = $"'{boundedContext}' bounded context batch event processing thread"
+            };
+
+            var taskMethods = typeof(Task<CommandHandlingResult>).GetMethods(BindingFlags.Public | BindingFlags.Instance);
+            var awaiterResultType = typeof(TaskAwaiter<CommandHandlingResult>);
+            _getAwaiterInfo = taskMethods.First(m => m.Name == "GetAwaiter" && m.ReturnType == awaiterResultType);
+        }
+
+        public EventDispatcher(
+            ILogFactory logFactory,
+            string boundedContext,
+            bool enableEventsLogging = true)
+        {
+            _defaultBatchManager = new BatchManager(logFactory, FailedEventRetryDelay);
+            _log = logFactory.CreateLog(this);
+            _logFactory = logFactory;
+            _boundedContext = boundedContext;
+            _enableEventsLogging = enableEventsLogging;
+            _applyBatchesThread = new Thread(() =>
+            {
+                while (!_stop.WaitOne(1000))
+                {
+                    ApplyBatches();
+                }
+            })
+            {
+                Name = $"'{boundedContext}' bounded context batch event processing thread"
+            };
 
             var taskMethods = typeof(Task<CommandHandlingResult>).GetMethods(BindingFlags.Public | BindingFlags.Instance);
             var awaiterResultType = typeof(TaskAwaiter<CommandHandlingResult>);
@@ -59,8 +85,8 @@ namespace Lykke.Cqrs
 
         private void ApplyBatches(bool force = false)
         {
-            var batchManagers = m_batchHandlerInfos.SelectMany(h => h.Value.Select(_ => _.Item2))
-                .Concat(m_handlerInfos.SelectMany(h => h.Value.Select(_ => _.Item2)))
+            var batchManagers = _batchHandlerInfos.SelectMany(h => h.Value.Select(_ => _.Item2))
+                .Concat(_handlerInfos.SelectMany(h => h.Value.Select(_ => _.Item2)))
                 .Distinct();
 
             foreach (var batchManager in batchManagers)
@@ -90,17 +116,25 @@ namespace Lykke.Cqrs
             Action<object, object> afterBatchApply,
             params OptionalParameterBase[] parameters)
         {
-            Func<object> beforeBatchApplyWrap = beforeBatchApply == null ? (Func<object>)null : () => beforeBatchApply(o);
-            Action<object> afterBatchApplyWrap = afterBatchApply == null ? (Action<object>)null : c => afterBatchApply(o, c);
+            var beforeBatchApplyWrap = beforeBatchApply == null ? (Func<object>)null : () => beforeBatchApply(o);
+            var afterBatchApplyWrap = afterBatchApply == null ? (Action<object>)null : c => afterBatchApply(o, c);
             var batchManager = batchSize == 0 && applyTimeoutInSeconds == 0
                 ? null
-                : new BatchManager(
-                    _log,
-                    m_FailedEventRetryDelay,
-                    batchSize,
-                    applyTimeoutInSeconds * 1000,
-                    beforeBatchApplyWrap,
-                    afterBatchApplyWrap);
+                : _logFactory != null
+                    ? new BatchManager(
+                        _logFactory,
+                        FailedEventRetryDelay,
+                        batchSize,
+                        applyTimeoutInSeconds * 1000,
+                        beforeBatchApplyWrap,
+                        afterBatchApplyWrap)
+                    : new BatchManager(
+                        _log,
+                        FailedEventRetryDelay,
+                        batchSize,
+                        applyTimeoutInSeconds * 1000,
+                        beforeBatchApplyWrap,
+                        afterBatchApplyWrap);
             Wire(
                 fromBoundedContext,
                 o,
@@ -116,8 +150,8 @@ namespace Lykke.Cqrs
             Type batchContextType,
             params OptionalParameterBase[] parameters)
         {
-            if (batchManager != null && m_ApplyBatchesThread.ThreadState == ThreadState.Unstarted && batchManager.ApplyTimeout != 0)
-                m_ApplyBatchesThread.Start();
+            if (batchManager != null && _applyBatchesThread.ThreadState == ThreadState.Unstarted && batchManager.ApplyTimeout != 0)
+                _applyBatchesThread.Start();
 
             var batchContextParameter = new ExpressionParameter(null, batchContextType);
             parameters = parameters.Concat(new OptionalParameterBase[]
@@ -165,26 +199,25 @@ namespace Lykke.Cqrs
                 var key = new EventOrigin(fromBoundedContext, eventType);
                 if (method.isBatch)
                 {
-                    List<((string, Func<object[], object, CommandHandlingResult[]>), BatchManager)> batchHandlersList;
-                    if (!m_batchHandlerInfos.TryGetValue(key, out batchHandlersList))
+                    if (!_batchHandlerInfos.TryGetValue(key, out var batchHandlersList))
                     {
                         batchHandlersList = new List<((string, Func<object[], object, CommandHandlingResult[]>), BatchManager)>();
-                        m_batchHandlerInfos.Add(key, batchHandlersList);
+                        _batchHandlerInfos.Add(key, batchHandlersList);
                     }
                     var batchHandler = CreateBatchHandler(
                         eventType,
                         o,
                         method.callParameters.Select(p => p.optionalParameter),
                         batchContextParameter);
-                    batchHandlersList.Add(((o.GetType().Name, batchHandler), batchManager ?? m_DefaultBatchManager));
+                    batchHandlersList.Add(((o.GetType().Name, batchHandler), batchManager ?? _defaultBatchManager));
                 }
                 else
                 {
                     List<((string, Func<object, object, CommandHandlingResult>), BatchManager)> handlersList;
-                    if (!m_handlerInfos.TryGetValue(key, out handlersList))
+                    if (!_handlerInfos.TryGetValue(key, out handlersList))
                     {
                         handlersList = new List<((string, Func<object, object, CommandHandlingResult>), BatchManager)>();
-                        m_handlerInfos.Add(key, handlersList);
+                        _handlerInfos.Add(key, handlersList);
                     }
                     var handler = CreateHandler(
                         eventType,
@@ -192,7 +225,7 @@ namespace Lykke.Cqrs
                         method.callParameters.Select(p => p.optionalParameter),
                         method.returnType,
                         batchContextParameter);
-                    handlersList.Add(((o.GetType().Name, handler), batchManager ?? m_DefaultBatchManager));
+                    handlersList.Add(((o.GetType().Name, handler), batchManager ?? _defaultBatchManager));
                 }
             }
         }
@@ -328,7 +361,7 @@ namespace Lykke.Cqrs
 
             bool handlerFound = false;
 
-            if (m_batchHandlerInfos.TryGetValue(origin, out var batchList))
+            if (_batchHandlerInfos.TryGetValue(origin, out var batchList))
             {
                 var handlersByBatchManager = batchList.GroupBy(i => i.Item2);
                 foreach (var grouping in handlersByBatchManager)
@@ -340,7 +373,7 @@ namespace Lykke.Cqrs
                 handlerFound = true;
             }
 
-            if (m_handlerInfos.TryGetValue(origin, out var list))
+            if (_handlerInfos.TryGetValue(origin, out var list))
             {
                 var handlersByBatchManager = list.GroupBy(i => i.Item2);
                 foreach (var grouping in handlersByBatchManager)
@@ -361,10 +394,10 @@ namespace Lykke.Cqrs
 
         public void Dispose()
         {
-            if (m_ApplyBatchesThread.ThreadState == ThreadState.Unstarted) 
+            if (_applyBatchesThread.ThreadState == ThreadState.Unstarted) 
                 return;
-            m_Stop.Set();
-            m_ApplyBatchesThread.Join();
+            _stop.Set();
+            _applyBatchesThread.Join();
             ApplyBatches(true);
         }
     }

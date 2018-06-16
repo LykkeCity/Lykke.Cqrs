@@ -1,14 +1,28 @@
 ﻿using System;
 using System.Collections.Generic;
-using Common.Log;
+using Lykke.Common.Log;
+using Lykke.Logs;
+using Lykke.Logs.Loggers.LykkeConsole;
 using Lykke.Messaging.Contract;
 using NUnit.Framework;
 
 namespace Lykke.Cqrs.Tests
 {
     [TestFixture]
-    public class CommandDispatcherTests
+    public class CommandDispatcherTests : IDisposable
     {
+        private readonly ILogFactory _logFactory;
+
+        public CommandDispatcherTests()
+        {
+            _logFactory = LogFactory.Create().AddUnbufferedConsole();
+        }
+
+        public void Dispose()
+        {
+            _logFactory?.Dispose();
+        }
+        
         [OneTimeSetUp]
         public void Setup()
         {
@@ -17,7 +31,7 @@ namespace Lykke.Cqrs.Tests
         [Test]
         public void WireTest()
         {
-            var dispatcher = new CommandDispatcher(new LogToConsole(), "testBC");
+            var dispatcher = new CommandDispatcher(_logFactory, "testBC");
             var handler = new Handler();
             dispatcher.Wire(handler);
             dispatcher.Dispatch("test", (delay, acknowledge) => { },new Endpoint(), "route");
@@ -28,11 +42,11 @@ namespace Lykke.Cqrs.Tests
         [Test]
         public void WireWithOptionalParameterTest()
         {
-            var dispatcher = new CommandDispatcher(new LogToConsole(), "testBC");
+            var dispatcher = new CommandDispatcher(_logFactory, "testBC");
             var handler = new RepoHandler();
             var int64Repo = new Int64Repo();
 
-            dispatcher.Wire(handler, new[] { new OptionalParameter<IInt64Repo>(int64Repo) });
+            dispatcher.Wire(handler, new OptionalParameter<IInt64Repo>(int64Repo));
             dispatcher.Dispatch((Int64)1, (delay, acknowledge) => { }, new Endpoint(), "route");
 
             Assert.That(handler.HandledCommands, Is.EquivalentTo(new object[] { (Int64)1 }), "Some commands were not dispatched");
@@ -42,10 +56,10 @@ namespace Lykke.Cqrs.Tests
         [Test]
         public void WireWithFactoryOptionalParameterTest()
         {
-            var dispatcher = new CommandDispatcher(new LogToConsole(), "testBC");
+            var dispatcher = new CommandDispatcher(_logFactory, "testBC");
             var handler = new RepoHandler();
             var int64Repo = new Int64Repo();
-            dispatcher.Wire(handler, new[] {new FactoryParameter<IInt64Repo>(() => int64Repo)});
+            dispatcher.Wire(handler, new FactoryParameter<IInt64Repo>(() => int64Repo));
             dispatcher.Dispatch((Int64)1, (delay, acknowledge) => { }, new Endpoint(), "route");
             
             Assert.That(handler.HandledCommands, Is.EquivalentTo(new object[] { (Int64)1 }), "Some commands were not dispatched");
@@ -55,9 +69,9 @@ namespace Lykke.Cqrs.Tests
         [Test]
         public void WireWithFactoryOptionalParameterNullTest()
         {
-            var dispatcher = new CommandDispatcher(new LogToConsole(), "testBC");
+            var dispatcher = new CommandDispatcher(_logFactory, "testBC");
             var handler = new RepoHandler();
-            dispatcher.Wire(handler, new[] { new FactoryParameter<IInt64Repo>(() => null) });
+            dispatcher.Wire(handler, new FactoryParameter<IInt64Repo>(() => null));
             dispatcher.Dispatch((Int64)1, (delay, acknowledge) => { }, new Endpoint(), "route");
 
             Assert.That(handler.HandledCommands, Is.EquivalentTo(new object[] { (Int64)1 }), "Some commands were not dispatched");
@@ -66,7 +80,7 @@ namespace Lykke.Cqrs.Tests
         [Test]
         public void MultipleHandlersAreNotAllowedDispatchTest()
         {
-            var dispatcher = new CommandDispatcher(new LogToConsole(), "testBC");
+            var dispatcher = new CommandDispatcher(_logFactory, "testBC");
             var handler1 = new Handler();
             var handler2 = new Handler();
 
@@ -80,7 +94,7 @@ namespace Lykke.Cqrs.Tests
         [Test]
         public void DispatchOfUnknownCommandShouldFailTest()
         {
-            var dispatcher = new CommandDispatcher(new LogToConsole(), "testBC");
+            var dispatcher = new CommandDispatcher(_logFactory, "testBC");
             var ack = true;
             dispatcher.Dispatch("testCommand",  (delay, acknowledge) => { ack = acknowledge; }, new Endpoint(), "route");
             Assert.That(ack,Is.False);
@@ -90,7 +104,7 @@ namespace Lykke.Cqrs.Tests
         public void FailingCommandTest()
         {
             bool ack = true;
-            var dispatcher = new CommandDispatcher(new LogToConsole(), "testBC");
+            var dispatcher = new CommandDispatcher(_logFactory, "testBC");
             var handler = new Handler();
             dispatcher.Wire(handler);
             dispatcher.Dispatch(DateTime.Now,   (delay, acknowledge) => { ack = false; }, new Endpoint(), "route");
@@ -101,7 +115,7 @@ namespace Lykke.Cqrs.Tests
         public void UnknownCommandTest()
         {
             bool ack = true;
-            var dispatcher = new CommandDispatcher(new LogToConsole(), "testBC");
+            var dispatcher = new CommandDispatcher(_logFactory, "testBC");
             dispatcher.Dispatch(DateTime.Now,  (delay, acknowledge) => { ack = false; }, new Endpoint(), "route");
             Assert.That(ack,Is.False,"Failed command was not unacked");
         }

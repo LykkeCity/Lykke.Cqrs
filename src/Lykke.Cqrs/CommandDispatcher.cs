@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using System.Runtime.CompilerServices;
 using Common;
 using Common.Log;
+using Lykke.Common.Log;
 using Lykke.Messaging.Contract;
 using Lykke.Cqrs.InfrastructureCommands;
 using Lykke.Cqrs.Utils;
@@ -15,23 +16,15 @@ namespace Lykke.Cqrs
 {
     internal class CommandDispatcher : IDisposable
     {
-        private readonly Dictionary<Type, (string, Func<object, Endpoint, string, CommandHandlingResult>)> m_handlers =
+        private readonly Dictionary<Type, (string, Func<object, Endpoint, string, CommandHandlingResult>)> _handlers =
             new Dictionary<Type, (string, Func<object, Endpoint, string, CommandHandlingResult>)>();
-        private readonly string m_BoundedContext;
+        private readonly string _boundedContext;
         private readonly ILog _log;
         private readonly MethodInfo _getAwaiterInfo;
         private readonly bool _enableCommandsLogging;
+        private readonly long _failedCommandRetryDelay;
 
-        private long m_FailedCommandRetryDelay;
-
-        public CommandDispatcher(
-            ILog log,
-            string boundedContext,
-            long failedCommandRetryDelay = 60000)
-            : this(log, boundedContext, true, failedCommandRetryDelay)
-        {
-        }
-
+        [Obsolete]
         public CommandDispatcher(
             ILog log,
             string boundedContext,
@@ -39,8 +32,24 @@ namespace Lykke.Cqrs
             long failedCommandRetryDelay = 60000)
         {
             _log = log;
-            m_FailedCommandRetryDelay = failedCommandRetryDelay;
-            m_BoundedContext = boundedContext;
+            _failedCommandRetryDelay = failedCommandRetryDelay;
+            _boundedContext = boundedContext;
+            _enableCommandsLogging = enableCommandsLogging;
+
+            var taskMethods = typeof(Task<CommandHandlingResult>).GetMethods(BindingFlags.Public | BindingFlags.Instance);
+            var awaiterResultType = typeof(TaskAwaiter<CommandHandlingResult>);
+            _getAwaiterInfo = taskMethods.First(m => m.Name == "GetAwaiter" && m.ReturnType == awaiterResultType);
+        }
+
+        public CommandDispatcher(
+            ILogFactory logFactory,
+            string boundedContext,
+            bool enableCommandsLogging = true,
+            long failedCommandRetryDelay = 60000)
+        {
+            _log = logFactory.CreateLog(this);
+            _failedCommandRetryDelay = failedCommandRetryDelay;
+            _boundedContext = boundedContext;
             _enableCommandsLogging = enableCommandsLogging;
 
             var taskMethods = typeof(Task<CommandHandlingResult>).GetMethods(BindingFlags.Public | BindingFlags.Instance);
@@ -54,7 +63,7 @@ namespace Lykke.Cqrs
                 throw new ArgumentNullException("o");
 
             parameters = parameters
-                .Concat(new OptionalParameterBase[] { new OptionalParameter<string>("boundedContext", m_BoundedContext) })
+                .Concat(new OptionalParameterBase[] { new OptionalParameter<string>("boundedContext", _boundedContext) })
                 .ToArray();
 
             var handleMethods = o.GetType().GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
@@ -120,10 +129,9 @@ namespace Lykke.Cqrs
                 commandParameter = Expression.New(ctor, Expression.Convert(command, handledType), endpoint, route);
             }
 
-            (string, Func<object, Endpoint, string, CommandHandlingResult>) handlerInfo;
-            if (m_handlers.TryGetValue(handledType, out handlerInfo))
+            if (_handlers.ContainsKey(handledType))
                 throw new InvalidOperationException(
-                    $"Only one handler per command is allowed. Command {commandType} handler is already registered in bound context {m_BoundedContext}. Can not register {o} as handler for it");
+                    $"Only one handler per command is allowed. Command {commandType} handler is already registered in bound context {_boundedContext}. Can not register {o} as handler for it");
 
             // prepare variables expressions
             var variables = optionalParameters
@@ -182,7 +190,7 @@ namespace Lykke.Cqrs
             }
             var lambda = (Expression<Func<object, Endpoint, string, CommandHandlingResult>>)Expression.Lambda(call, command, endpoint, route);
 
-            m_handlers.Add(handledType, (o.GetType().Name, lambda.Compile()));
+            _handlers.Add(handledType, (o.GetType().Name, lambda.Compile()));
         }
 
         public void Dispatch(
@@ -191,13 +199,13 @@ namespace Lykke.Cqrs
             Endpoint commandOriginEndpoint,
             string route)
         {
-            if (!m_handlers.TryGetValue(command.GetType(), out var handlerInfo))
+            if (!_handlers.TryGetValue(command.GetType(), out var handlerInfo))
             {
                 _log.WriteWarning(
                     nameof(CommandDispatcher),
                     nameof(Dispatch),
-                    $"Failed to handle command of type {command?.GetType().Name ?? "Unknown type"} in bound context {m_BoundedContext}, no handler was registered for it");
-                acknowledge(m_FailedCommandRetryDelay, false);
+                    $"Failed to handle command of type {command?.GetType().Name ?? "Unknown type"} in bound context {_boundedContext}, no handler was registered for it");
+                acknowledge(_failedCommandRetryDelay, false);
                 return;
             }
 
@@ -227,7 +235,7 @@ namespace Lykke.Cqrs
                 "Cqrs handle command",
                 handlerTypeName,
                 commandType,
-                m_BoundedContext);
+                _boundedContext);
             try
             {
                 var result = handler(command, commandOriginEndpoint, route);
@@ -238,7 +246,7 @@ namespace Lykke.Cqrs
                 _log.WriteErrorAsync(handlerTypeName, commandType, command?.ToJson() ?? "", e)
                     .GetAwaiter().GetResult();
 
-                acknowledge(m_FailedCommandRetryDelay, false);
+                acknowledge(_failedCommandRetryDelay, false);
 
                 TelemetryHelper.SubmitException(telemtryOperation, e);
             }
