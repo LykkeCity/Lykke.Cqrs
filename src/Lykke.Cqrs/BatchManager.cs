@@ -295,7 +295,7 @@ namespace Lykke.Cqrs
             foreach(var batchHandlerInfo in batchHandlerInfos)
             {
                 if (_enableEventsLogging)
-                    _log.WriteInfoAsync(batchHandlerInfo.Item1, origin.EventType.Name, $"Events: {eventsArray.ToJson()}", "")
+                    _log.WriteInfoAsync(batchHandlerInfo.Item1, origin.EventType.Name, $"Events: {eventsArray.ToJson()}", "Events batch handled")
                         .GetAwaiter().GetResult();
 
                 var telemtryOperation = TelemetryHelper.InitTelemetryOperation(
@@ -307,7 +307,7 @@ namespace Lykke.Cqrs
                 {
                     var handleResults = batchHandlerInfo.Item2(eventsArray, batchContext);
                     if (handleResults.Length != results.Length)
-                        _log.WriteWarningAsync(batchHandlerInfo.Item1, origin.EventType.Name, eventsArray.ToJson(), $"Number of results is not equal to number of events!")
+                        _log.WriteWarningAsync(batchHandlerInfo.Item1, origin.EventType.Name, eventsArray.ToJson(), "Number of results is not equal to number of events!")
                             .GetAwaiter().GetResult();
                     for (int i = 0; i < handleResults.Length; ++i)
                     {
@@ -354,7 +354,7 @@ namespace Lykke.Cqrs
                 foreach (var handlerInfo in handlerInfos)
                 {
                     if (_enableEventsLogging)
-                        _log.WriteInfoAsync(handlerInfo.Item1, origin.EventType.Name, @event?.ToJson(), "")
+                        _log.WriteInfoAsync(handlerInfo.Item1, origin.EventType.Name, @event?.ToJson(), "Event handled")
                             .GetAwaiter().GetResult();
 
                     var telemtryOperation = TelemetryHelper.InitTelemetryOperation(

@@ -7,6 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Lykke.Common" Version="7.0.1" />
     <PackageReference Include="Lykke.Logs" Version="5.0.0" />
     <PackageReference Include="Lykke.Messaging" Version="5.1.0" />
     <PackageReference Include="Lykke.Messaging.RabbitMq" Version="2.1.0" />

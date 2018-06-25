@@ -228,7 +228,7 @@ namespace Lykke.Cqrs
         {
             string commandType = command?.GetType().Name ?? "Unknown command type";
             if (_enableCommandsLogging)
-                _log.WriteInfoAsync(handlerTypeName, commandType, command?.ToJson(), "")
+                _log.WriteInfoAsync(handlerTypeName, commandType, command?.ToJson(), "Command handled")
                     .GetAwaiter().GetResult();
 
             var telemtryOperation = TelemetryHelper.InitTelemetryOperation(
