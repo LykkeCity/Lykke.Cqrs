@@ -9,9 +9,9 @@ namespace Lykke.Cqrs
     {
         private readonly IComponentContext _context;
 
-        public AutofacDependencyResolver([NotNull] IComponentContext kernel)
+        public AutofacDependencyResolver([NotNull] IComponentContext context)
         {
-            _context = kernel ?? throw new ArgumentNullException(nameof(kernel));
+            _context = context ?? throw new ArgumentNullException(nameof(context));
         }
 
         public object GetService(Type type)
