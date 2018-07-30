@@ -7,6 +7,7 @@ using Lykke.Messaging;
 using Lykke.Messaging.Configuration;
 using Lykke.Messaging.Contract;
 using Lykke.Messaging.RabbitMq;
+using Lykke.Messaging.Serialization;
 using Lykke.Cqrs.Configuration;
 using Moq;
 using NUnit.Framework;
@@ -70,9 +71,9 @@ namespace Lykke.Cqrs.Tests
                                                                       .WithCommandsHandler(commandHandler))
                     )
                 {
-                    messagingEngine.Send("test1", new Endpoint("InMemory", "exchange1", serializationFormat: "json"));
-                    messagingEngine.Send("test2", new Endpoint("InMemory", "exchange2", serializationFormat: "json"));
-                    messagingEngine.Send("test3", new Endpoint("InMemory", "exchange3", serializationFormat: "json"));
+                    messagingEngine.Send("test1", new Endpoint("InMemory", "exchange1", serializationFormat: SerializationFormat.Json));
+                    messagingEngine.Send("test2", new Endpoint("InMemory", "exchange2", serializationFormat: SerializationFormat.Json));
+                    messagingEngine.Send("test3", new Endpoint("InMemory", "exchange3", serializationFormat: SerializationFormat.Json));
                     Thread.Sleep(6000);
                     Assert.That(commandHandler.AcceptedCommands, Is.EquivalentTo(new[] { "test1", "test2" }));
                 }
@@ -82,8 +83,8 @@ namespace Lykke.Cqrs.Tests
         [Test]
         public void ContextUsesDefaultRouteForCommandPublishingIfItDoesNotHaveItsOwnTest()
         {
-            var bcCommands = new Endpoint("InMemory", "bcCommands", serializationFormat: "json");
-            var defaultCommands = new Endpoint("InMemory", "defaultCommands", serializationFormat: "json");
+            var bcCommands = new Endpoint("InMemory", "bcCommands", serializationFormat: SerializationFormat.Json);
+            var defaultCommands = new Endpoint("InMemory", "defaultCommands", serializationFormat: SerializationFormat.Json);
             using (
                 var messagingEngine =
                     new MessagingEngine(
@@ -134,7 +135,7 @@ namespace Lykke.Cqrs.Tests
                 var commandHandler = new CommandHandler();
                 using (var engine = new CqrsEngine(new LogToConsole(), messagingEngine,
                     Register.DefaultEndpointResolver(
-                        new RabbitMqConventionEndpointResolver("rmq", "json", environment: "dev")),
+                        new RabbitMqConventionEndpointResolver("rmq", SerializationFormat.Json, environment: "dev")),
                     Register.BoundedContext("operations")
                         .PublishingCommands(typeof(CreateCashOutCommand)).To("lykke-wallet").With("operations-commands")
                         .ListeningEvents(typeof(CashOutCreatedEvent)).From("lykke-wallet").On("lykke-wallet-events"),
@@ -164,9 +165,9 @@ namespace Lykke.Cqrs.Tests
         public void FluentApiTest()
         {
             var endpointProvider = new Mock<IEndpointProvider>();
-            endpointProvider.Setup(r => r.Get("high")).Returns(new Endpoint("InMemory", "high", true, "json"));
-            endpointProvider.Setup(r => r.Get("low")).Returns(new Endpoint("InMemory", "low", true, "json"));
-            endpointProvider.Setup(r => r.Get("medium")).Returns(new Endpoint("InMemory", "medium", true, "json"));
+            endpointProvider.Setup(r => r.Get("high")).Returns(new Endpoint("InMemory", "high", true, SerializationFormat.Json));
+            endpointProvider.Setup(r => r.Get("low")).Returns(new Endpoint("InMemory", "low", true, SerializationFormat.Json));
+            endpointProvider.Setup(r => r.Get("medium")).Returns(new Endpoint("InMemory", "medium", true, SerializationFormat.Json));
 
             var messagingEngine =
                 new MessagingEngine(
@@ -212,7 +213,7 @@ namespace Lykke.Cqrs.Tests
                     Register.DefaultRouting
                         .PublishingCommands(typeof(string)).To("operations").With("defaultCommandsRoute")
                         .PublishingCommands(typeof(int)).To("operations").With("defaultCommandsRoute"),
-                    Register.DefaultEndpointResolver(new RabbitMqConventionEndpointResolver("rmq", "json"))
+                    Register.DefaultEndpointResolver(new RabbitMqConventionEndpointResolver("rmq", SerializationFormat.Json))
                    );
             }
         }
@@ -221,8 +222,8 @@ namespace Lykke.Cqrs.Tests
         public void PrioritizedCommandsProcessingTest()
         {
             var endpointProvider = new Mock<IEndpointProvider>();
-            endpointProvider.Setup(r => r.Get("exchange1")).Returns(new Endpoint("InMemory", "bc.exchange1", true, "json"));
-            endpointProvider.Setup(r => r.Get("exchange2")).Returns(new Endpoint("InMemory", "bc.exchange2", true, "json"));
+            endpointProvider.Setup(r => r.Get("exchange1")).Returns(new Endpoint("InMemory", "bc.exchange1", true, SerializationFormat.Json));
+            endpointProvider.Setup(r => r.Get("exchange2")).Returns(new Endpoint("InMemory", "bc.exchange2", true, SerializationFormat.Json));
             using (
                 var messagingEngine =
                     new MessagingEngine(
@@ -245,17 +246,17 @@ namespace Lykke.Cqrs.Tests
                                                     .WithCommandsHandler(commandHandler))
                     )
                 {
-                    messagingEngine.Send("low1", new Endpoint("InMemory", "bc.exchange2", serializationFormat: "json"));
-                    messagingEngine.Send("low2", new Endpoint("InMemory", "bc.exchange2", serializationFormat: "json"));
-                    messagingEngine.Send("low3", new Endpoint("InMemory", "bc.exchange2", serializationFormat: "json"));
-                    messagingEngine.Send("low4", new Endpoint("InMemory", "bc.exchange2", serializationFormat: "json"));
-                    messagingEngine.Send("low5", new Endpoint("InMemory", "bc.exchange2", serializationFormat: "json"));
-                    messagingEngine.Send("low6", new Endpoint("InMemory", "bc.exchange2", serializationFormat: "json"));
-                    messagingEngine.Send("low7", new Endpoint("InMemory", "bc.exchange2", serializationFormat: "json"));
-                    messagingEngine.Send("low8", new Endpoint("InMemory", "bc.exchange2", serializationFormat: "json"));
-                    messagingEngine.Send("low9", new Endpoint("InMemory", "bc.exchange2", serializationFormat: "json"));
-                    messagingEngine.Send("low10", new Endpoint("InMemory", "bc.exchange2", serializationFormat: "json"));
-                    messagingEngine.Send("high", new Endpoint("InMemory", "bc.exchange1", serializationFormat: "json"));
+                    messagingEngine.Send("low1", new Endpoint("InMemory", "bc.exchange2", serializationFormat: SerializationFormat.Json));
+                    messagingEngine.Send("low2", new Endpoint("InMemory", "bc.exchange2", serializationFormat: SerializationFormat.Json));
+                    messagingEngine.Send("low3", new Endpoint("InMemory", "bc.exchange2", serializationFormat: SerializationFormat.Json));
+                    messagingEngine.Send("low4", new Endpoint("InMemory", "bc.exchange2", serializationFormat: SerializationFormat.Json));
+                    messagingEngine.Send("low5", new Endpoint("InMemory", "bc.exchange2", serializationFormat: SerializationFormat.Json));
+                    messagingEngine.Send("low6", new Endpoint("InMemory", "bc.exchange2", serializationFormat: SerializationFormat.Json));
+                    messagingEngine.Send("low7", new Endpoint("InMemory", "bc.exchange2", serializationFormat: SerializationFormat.Json));
+                    messagingEngine.Send("low8", new Endpoint("InMemory", "bc.exchange2", serializationFormat: SerializationFormat.Json));
+                    messagingEngine.Send("low9", new Endpoint("InMemory", "bc.exchange2", serializationFormat: SerializationFormat.Json));
+                    messagingEngine.Send("low10", new Endpoint("InMemory", "bc.exchange2", serializationFormat: SerializationFormat.Json));
+                    messagingEngine.Send("high", new Endpoint("InMemory", "bc.exchange1", serializationFormat: SerializationFormat.Json));
                     Thread.Sleep(2000);
                     Console.WriteLine(string.Join("\n", commandHandler.AcceptedCommands));
                     Assert.That(commandHandler.AcceptedCommands.Take(2).Any(c => (string)c == "high"), Is.True);

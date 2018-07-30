@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using Lykke.Messaging.Configuration;
 using Lykke.Messaging.Contract;
+using Lykke.Messaging.Serialization;
 using Lykke.Cqrs.Routing;
 
 namespace Lykke.Cqrs
@@ -12,7 +13,7 @@ namespace Lykke.Cqrs
             new Dictionary<Tuple<string, RoutingKey>, Endpoint>();
 
         private readonly string _transport;
-        private readonly string _serializationFormat;
+        private readonly SerializationFormat _serializationFormat;
         private readonly string _exclusiveQueuePostfix;
         private readonly string _environmentPrefix;
         private readonly string _commandsKeyword;
@@ -20,7 +21,7 @@ namespace Lykke.Cqrs
 
         public RabbitMqConventionEndpointResolver(
             string transport,
-            string serializationFormat,
+            SerializationFormat serializationFormat,
             string exclusiveQueuePostfix = null,
             string environment = null,
             string commandsKeyword = null,

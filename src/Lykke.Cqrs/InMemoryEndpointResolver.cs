@@ -1,5 +1,6 @@
 ﻿using Lykke.Messaging.Configuration;
 using Lykke.Messaging.Contract;
+using Lykke.Messaging.Serialization;
 using Lykke.Cqrs.Routing;
 
 namespace Lykke.Cqrs
@@ -13,12 +14,12 @@ namespace Lykke.Cqrs
                     "InMemory",
                     /*key.LocalBoundedContext + "." + */route,
                     true,
-                    "json");
+                    SerializationFormat.Json);
             return new Endpoint(
                 "InMemory",
                 /*key.LocalBoundedContext + "." + */route + "." + key.Priority,
                 true,
-                "json");
+                SerializationFormat.Json);
         }
     }
 }

@@ -9,6 +9,7 @@ using Lykke.Messaging;
 using Lykke.Messaging.Configuration;
 using Lykke.Messaging.Contract;
 using Lykke.Messaging.RabbitMq;
+using Lykke.Messaging.Serialization;
 using Lykke.Cqrs.Configuration;
 using Lykke.Logs;
 using Lykke.Logs.Loggers.LykkeConsole;
@@ -295,7 +296,7 @@ namespace Lykke.Cqrs.Tests
             {
                 messagingEngine.CreateTemporaryDestination("RabbitMq",null);
            
-                var endpoint = new Endpoint("RabbitMq", "testExchange" , "testQueue", true, "json");
+                var endpoint = new Endpoint("RabbitMq", "testExchange" , "testQueue", true, SerializationFormat.Json);
                 endpointProvider.Setup(r => r.Get("route")).Returns(endpoint);
                 endpointProvider.Setup(r => r.Contains("route")).Returns(true);
 
