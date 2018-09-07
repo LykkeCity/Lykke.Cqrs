@@ -386,10 +386,13 @@ namespace Lykke.Cqrs
             }
 
             if (!handlerFound)
+            {
+                _log.WriteWarning(nameof(Dispatch), origin, $"Event handler not found for type {origin.EventType} from context {origin.BoundedContext}");
                 foreach (var @event in events)
                 {
                     @event.Item2(0, true);
                 }
+            }
         }
 
         public void Dispose()
