@@ -3,12 +3,15 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using Common.Log;
+using Lykke.Common.Log;
 using Lykke.Messaging;
 using Lykke.Messaging.Configuration;
 using Lykke.Messaging.Contract;
 using Lykke.Messaging.RabbitMq;
 using Lykke.Messaging.Serialization;
 using Lykke.Cqrs.Configuration;
+using Lykke.Logs;
+using Lykke.Logs.Loggers.LykkeConsole;
 using Moq;
 using NUnit.Framework;
 
@@ -49,6 +52,18 @@ namespace Lykke.Cqrs.Tests
     [TestFixture]
     public class CqrsEngineTests
     {
+        private readonly ILogFactory _logFactory;
+
+        public CqrsEngineTests()
+        {
+            _logFactory = LogFactory.Create().AddUnbufferedConsole();
+        }
+
+        public void Dispose()
+        {
+            _logFactory?.Dispose();
+        }
+
         [Test]
         public void ListenSameCommandOnDifferentEndpointsTest()
         {
@@ -529,18 +544,55 @@ namespace Lykke.Cqrs.Tests
 
         //    Assert.That(eventsListener.Handled.Count, Is.EqualTo(3 + expectedReplayCount), "Wrong number of events was replayed");
         //}
+
+        [Test, Ignore("integration")]
+        public void BatchDispatchUnackRmqTest()
+        {
+            var handler = new EventHandlerWithBatchSupport(1);
+            var endpointProvider = new Mock<IEndpointProvider>();
+
+            using (
+                var messagingEngine =
+                    new MessagingEngine(
+                        _logFactory,
+                        new TransportResolver(new Dictionary<string, TransportInfo>
+                        {
+                            {"RabbitMq", new TransportInfo("amqp://localhost", "guest", "guest", null, "RabbitMq")}
+                        }), new RabbitMqTransportFactory(_logFactory)))
+            {
+                messagingEngine.CreateTemporaryDestination("RabbitMq", null);
+
+                var endpoint = new Endpoint("RabbitMq", "testExchange", "testQueue", true, SerializationFormat.Json);
+                endpointProvider.Setup(r => r.Get("route")).Returns(endpoint);
+                endpointProvider.Setup(r => r.Contains("route")).Returns(true);
+
+                using (new CqrsEngine(_logFactory, new DefaultDependencyResolver(), messagingEngine, endpointProvider.Object, false,
+                    Register.BoundedContext("bc").ListeningEvents(typeof(DateTime)).From("other").On("route")
+                        .WithProjection(handler, "other", 1, 0,
+                            h => h.OnBatchStart(),
+                            (h, c) => h.OnBatchFinish(c)
+                        )
+                ))
+                {
+                    messagingEngine.Send(DateTime.Now, endpoint);
+                    Thread.Sleep(20000);
+                }
+            }
+        }
     }
 
     public class TestProcess : IProcess
     {
+        private readonly Thread _workerThread;
+
+        private ICommandSender m_CommandSender;
+
         public ManualResetEvent Started = new ManualResetEvent(false);
         public ManualResetEvent Disposed = new ManualResetEvent(false);
-        Thread workerThread;
-        private ICommandSender m_CommandSender;
 
         public TestProcess()
         {
-            workerThread = new Thread(SendCommands);
+            _workerThread = new Thread(SendCommands);
         }
 
         private void SendCommands(object obj)
@@ -557,7 +609,7 @@ namespace Lykke.Cqrs.Tests
         public void Start(ICommandSender commandSender, IEventPublisher eventPublisher)
         {
             m_CommandSender = commandSender;
-            workerThread.Start();
+            _workerThread.Start();
             Console.WriteLine("Test process started");
             Started.Set();
         }

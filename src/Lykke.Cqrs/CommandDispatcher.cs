@@ -24,12 +24,14 @@ namespace Lykke.Cqrs
         private readonly bool _enableCommandsLogging;
         private readonly long _failedCommandRetryDelay;
 
+        internal const long FailedCommandRetryDelay = 60000;
+
         [Obsolete]
         public CommandDispatcher(
             ILog log,
             string boundedContext,
             bool enableCommandsLogging,
-            long failedCommandRetryDelay = 60000)
+            long failedCommandRetryDelay = FailedCommandRetryDelay)
         {
             _log = log;
             _failedCommandRetryDelay = failedCommandRetryDelay;
@@ -204,7 +206,7 @@ namespace Lykke.Cqrs
                 _log.WriteWarning(
                     nameof(CommandDispatcher),
                     nameof(Dispatch),
-                    $"Failed to handle command of type {command?.GetType().Name ?? "Unknown type"} in bound context {_boundedContext}, no handler was registered for it");
+                    $"Failed to handle command of type {command.GetType().Name} in bound context {_boundedContext}, no handler was registered for it");
                 acknowledge(_failedCommandRetryDelay, false);
                 return;
             }

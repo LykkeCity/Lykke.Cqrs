@@ -18,104 +18,6 @@ using NUnit.Framework;
 
 namespace Lykke.Cqrs.Tests
 {
-    class FakeBatchContext
-    {
-    }
-
-    class EventHandlerWithBatchSupport 
-    {
-        public readonly List<Tuple<object, object>> HandledEvents = new List<Tuple<object, object>>();
-        private int _failCount;
-
-        public EventHandlerWithBatchSupport(int failCount = 0)
-        {
-            _failCount = failCount;
-        }
-
-        public CommandHandlingResult Handle(DateTime e, FakeBatchContext batchContext)
-        {
-            HandledEvents.Add(Tuple.Create<object, object>(e, batchContext));
-            var retry = Interlocked.Decrement(ref _failCount) >= 0;
-            Console.WriteLine("Retry {0}",retry);
-            return new CommandHandlingResult() {Retry = retry, RetryDelay = 10};
-        }
-
-        public FakeBatchContext OnBatchStart()
-        {
-            BatchStartReported = true;
-            LastCreatedBatchContext = new FakeBatchContext();
-            return LastCreatedBatchContext;
-        }
-
-        public FakeBatchContext LastCreatedBatchContext { get; set; }
-        public bool BatchStartReported { get; set; }
-        public bool BatchFinishReported { get; set; }
-
-        public void OnBatchFinish(FakeBatchContext context)
-        {
-            BatchFinishReported = true;
-        }
-    }
-
-    class EventHandler
-    {
-        private readonly bool _fail;
-
-        public readonly List<object> HandledEvents = new List<object>();
-
-
-        public bool FailOnce { get; set; }
-
-        public EventHandler(bool fail = false)
-        {
-            _fail = fail;
-        }
-
-        [UsedImplicitly]
-        public void Handle(string e)
-        {
-            HandledEvents.Add(e);
-            if (_fail || FailOnce)
-            {
-                FailOnce = false;
-                throw new Exception();
-            }
-        }
-
-        public CommandHandlingResult[] Handle(int[] e)
-        {
-            return e.Select(i =>
-            {
-                HandledEvents.Add(i);
-                return new CommandHandlingResult {Retry = _fail, RetryDelay = 600};
-            }).ToArray();
-        }
-
-        public CommandHandlingResult Handle(Exception e)
-        {
-            HandledEvents.Add(e);
-            return new CommandHandlingResult(){Retry = true,RetryDelay = 100};
-        }
-    }
-
-    class EventHandlerWithAsyncHandle
-    {
-        [UsedImplicitly]
-        public Task Handle(string evt)
-        {
-            throw new InvalidOperationException();
-        }
-    }
-
-    class EventHandlerWithSyncHandle
-    {
-        [UsedImplicitly]
-        public Task Handle(string evt)
-        {
-            throw new InvalidOperationException();
-        }
-    }
-
     [TestFixture]
     public class EventDispatcherTests : IDisposable
     {
@@ -130,16 +32,26 @@ namespace Lykke.Cqrs.Tests
         {
             _logFactory?.Dispose();
         }
-        
+
         [Test]
         public void WireTest()
         {
             var dispatcher = new EventDispatcher(_logFactory, "testBC");
             var handler = new EventHandler();
+            var now = DateTime.UtcNow;
+            bool ack1 = false;
+            bool ack2 = false;
+            bool ack3 = false;
+
             dispatcher.Wire("testBC", handler);
-            dispatcher.Dispatch("testBC", "test", (delay, acknowledge) => { });
-            dispatcher.Dispatch("testBC", 1, (delay, acknowledge) => { });
-            Assert.That(handler.HandledEvents, Is.EquivalentTo(new object[] { "test", 1}), "Some events were not dispatched");
+            dispatcher.Dispatch("testBC", "test", (delay, acknowledge) => { ack1 = acknowledge; });
+            dispatcher.Dispatch("testBC", 1, (delay, acknowledge) => { ack2 = acknowledge; });
+            dispatcher.Dispatch("testBC", now, (delay, acknowledge) => { ack3 = acknowledge; });
+
+            Assert.That(handler.HandledEvents, Is.EquivalentTo(new object[] { "test", 1, now}), "Some events were not dispatched");
+            Assert.True(ack1, "Handled string command was not acknowledged");
+            Assert.True(ack2, "Handled int command was not acknowledged");
+            Assert.True(ack3, "Handled datetime command was not acknowledged");
         }
 
         [Test]
@@ -148,60 +60,195 @@ namespace Lykke.Cqrs.Tests
             var dispatcher = new EventDispatcher(_logFactory, "testBC");
             var handler1 = new EventHandler();
             var handler2 = new EventHandler();
-            dispatcher.Wire("testBC",handler1);
-            dispatcher.Wire("testBC",handler2);
-            dispatcher.Dispatch("testBC","test", (delay, acknowledge) => { });
+            bool ack = false;
+
+            dispatcher.Wire("testBC", handler1);
+            dispatcher.Wire("testBC", handler2);
+            dispatcher.Dispatch("testBC", "test", (delay, acknowledge) => { ack = acknowledge; });
+
             Assert.That(handler1.HandledEvents, Is.EquivalentTo(new[] { "test" }), "Event was not dispatched");
             Assert.That(handler2.HandledEvents, Is.EquivalentTo(new[] { "test" }), "Event was not dispatched");
+            Assert.True(ack, "Handled command was not acknowledged");
         }
 
         [Test]
         public void FailingHandlersDispatchTest()
         {
-            var dispatcher=new EventDispatcher(_logFactory, "testBC");
+            var dispatcher = new EventDispatcher(_logFactory, "testBC");
             var handler1 = new EventHandler();
             var handler2 = new EventHandler(true);
-            dispatcher.Wire("testBC",handler1);
+            Tuple<long, bool> result = null;
+
+            dispatcher.Wire("testBC", handler1);
             dispatcher.Wire("testBC", handler2);
-            Tuple<long, bool> result=null;
             dispatcher.Dispatch("testBC", "test", (delay, acknowledge) => { result = Tuple.Create(delay, acknowledge); });
-            Assert.That(handler1.HandledEvents, Is.EquivalentTo(new[] { "test" }), "Event was not dispatched");
-            Assert.That(result,Is.Not.Null,"fail was not reported");
-            Assert.That(result.Item2,Is.False,"fail was not reported");
-            Assert.That(result.Item1, Is.EqualTo(EventDispatcher.FailedEventRetryDelay), "fail was not reported");
+
+            Assert.That(handler1.HandledEvents, Is.EquivalentTo(new[] { "test" }), "Event was not dispatched to first handler");
+            Assert.That(handler2.HandledEvents, Is.EquivalentTo(new[] { "test" }), "Event was not dispatched to second handler");
+            Assert.NotNull(result, "fail was not reported");
+            Assert.AreEqual(EventDispatcher.FailedEventRetryDelay, result.Item1, "fail was not reported");
+            Assert.False(result.Item2, "fail was not reported");
         }
 
         [Test]
         public void RetryingHandlersDispatchTest()
         {
-            var dispatcher=new EventDispatcher(_logFactory, "testBC");
-            var handler = new EventHandler();
+            var dispatcher = new EventDispatcher(_logFactory, "testBC");
+            var handler = new ResultEventHandler(true, 100);
+            Tuple<long, bool> result = null;
+
             dispatcher.Wire("testBC", handler);
-            Tuple<long, bool> result=null;
-            dispatcher.Dispatch("testBC", new Exception(), (delay, acknowledge) => { result = Tuple.Create(delay, acknowledge); });
-            Assert.That(result,Is.Not.Null,"fail was not reported");
-            Assert.That(result.Item2,Is.False,"fail was not reported");
-            Assert.That(result.Item1, Is.EqualTo(100), "fail was not reported");
+            dispatcher.Dispatch("testBC", "test", (delay, acknowledge) => { result = Tuple.Create(delay, acknowledge); });
+
+            Assert.NotNull(result, "fail was not reported");
+            Assert.AreEqual(100, result.Item1, "fail was not reported");
+            Assert.False(result.Item2, "fail was not reported");
+        }
+
+        // Note: Strange logic in EventDispatcher - might need to be revised in the future.
+        [Test]
+        public void EventWithNoHandlerIsAcknowledgedTest()
+        {
+            var dispatcher = new EventDispatcher(_logFactory, "testBC");
+            bool ack = false;
+
+            dispatcher.Dispatch("testBC", "test", (delay, acknowledge) => { ack = acknowledge; });
+
+            Assert.True(ack);
+        }
+
+        [Test]
+        public void AsyncEventHadlerTest()
+        {
+            var dispatcher = new EventDispatcher(_logFactory, "testBC");
+            var asyncHandler = new AsyncEventHandler(false);
+            bool ack = false;
+
+            dispatcher.Wire("testBC", asyncHandler);
+            dispatcher.Dispatch("testBC", "test", (delay, acknowledge) => { ack = acknowledge; });
+
+            Assert.AreEqual(1, asyncHandler.HandledEvents.Count);
+            Assert.True(ack, "Event handler was not processed properly");
+        }
+
+        [Test]
+        public void ExceptionForAsyncEventHadlerTest()
+        {
+            var dispatcher = new EventDispatcher(_logFactory, "testBC");
+            var handler = new AsyncEventHandler(true);
+            int failedCount = 0;
+
+            dispatcher.Wire("testBC", handler);
+            dispatcher.Dispatch("testBC", "test", (delay, acknowledge) =>
+            {
+                if (!acknowledge)
+                    ++failedCount;
+            });
+
+            Assert.AreEqual(0, handler.HandledEvents.Count);
+            Assert.AreEqual(1, failedCount, "Event handler was not processed properly");
+        }
+
+        [Test]
+        public void AsyncResultEventHadlerTest()
+        {
+            var dispatcher = new EventDispatcher(_logFactory, "testBC");
+            var handler = new AsyncResultEventHandler(false);
+            bool ack = false;
+
+            dispatcher.Wire("testBC", handler);
+            dispatcher.Dispatch("testBC", "test", (delay, acknowledge) => { ack = acknowledge; });
+
+            Assert.AreEqual(1, handler.HandledEvents.Count);
+            Assert.True(ack, "Event handler was not processed properly");
+        }
+
+        [Test]
+        public void ExceptionForAsyncResultEventHadlerTest()
+        {
+            var dispatcher = new EventDispatcher(_logFactory, "testBC");
+            var handler = new AsyncResultEventHandler(true);
+            int failedCount = 0;
+
+            dispatcher.Wire("testBC", handler);
+            dispatcher.Dispatch("testBC", "test", (delay, acknowledge) =>
+            {
+                if (!acknowledge)
+                    ++failedCount;
+            });
+
+            Assert.AreEqual(0, handler.HandledEvents.Count);
+            Assert.AreEqual(1, failedCount, "Event handler was not processed properly");
         }
 
         [Test]
         public void BatchDispatchTest()
         {
             var dispatcher = new EventDispatcher(_logFactory, "testBC");
-            var handler = new EventHandler();
-            dispatcher.Wire("testBC", handler);
+            var handler = new EventHandler {FailOnce = true};
             Tuple<long, bool> result = null;
-            handler.FailOnce = true;
-            dispatcher.Dispatch("testBC",new []
+            bool ack2 = false;
+            bool ack3 = false;
+
+            dispatcher.Wire("testBC", handler);
+            dispatcher.Dispatch("testBC", new []
             {
-                Tuple.Create<object,AcknowledgeDelegate>("a", (delay, acknowledge) => {result = Tuple.Create(delay, acknowledge);  }),
-                Tuple.Create<object,AcknowledgeDelegate>("b", (delay, acknowledge) => { }),
-                Tuple.Create<object,AcknowledgeDelegate>("с", (delay, acknowledge) => { })
+                Tuple.Create<object, AcknowledgeDelegate>("a", (delay, acknowledge) => {result = Tuple.Create(delay, acknowledge); }),
+                Tuple.Create<object, AcknowledgeDelegate>("b", (delay, acknowledge) => { ack2 = acknowledge; }),
+                Tuple.Create<object, AcknowledgeDelegate>("с", (delay, acknowledge) => { ack3 = acknowledge; })
             });
 
-            Assert.That(result, Is.Not.Null, "fail was not reported");
-            Assert.That(result.Item2, Is.False, "fail was not reported");
-            Assert.That(handler.HandledEvents.Count, Is.EqualTo(3), "not all events were handled (exception in first event handling prevented following events processing?)");
+            Assert.NotNull(result, "fail was not reported");
+            Assert.False(result.Item2, "fail was not reported");
+            Assert.AreEqual(3, handler.HandledEvents.Count, "not all events were handled (exception in first event handling prevented following events processing?)");
+            Assert.True(ack2);
+            Assert.True(ack3);
+        }
+
+        [Test]
+        public void BatchDispatchWithBatchHandlerOkTest()
+        {
+            var dispatcher = new EventDispatcher(_logFactory, "testBC");
+            var handler = new BatchHandler(false);
+            bool ack1 = false;
+            bool ack2 = false;
+            bool ack3 = false;
+
+            dispatcher.Wire("testBC", handler);
+            dispatcher.Dispatch("testBC", new[]
+            {
+                Tuple.Create<object, AcknowledgeDelegate>("a", (delay, acknowledge) => { ack1 = acknowledge; }),
+                Tuple.Create<object, AcknowledgeDelegate>("b", (delay, acknowledge) => { ack2 = acknowledge; }),
+                Tuple.Create<object, AcknowledgeDelegate>("с", (delay, acknowledge) => { ack3 = acknowledge; })
+            });
+
+            Assert.AreEqual(3, handler.HandledEvents.Count, "not all events were handled (exception in first event handling prevented following events processing?)");
+            Assert.True(ack1);
+            Assert.True(ack2);
+            Assert.True(ack3);
+        }
+
+        [Test]
+        public void BatchDispatchWithBatchHandlerFailTest()
+        {
+            var dispatcher = new EventDispatcher(_logFactory, "testBC");
+            var handler = new BatchHandler(true);
+            bool ack1 = true;
+            bool ack2 = true;
+            bool ack3 = true;
+
+            dispatcher.Wire("testBC", handler);
+            dispatcher.Dispatch("testBC", new[]
+            {
+                Tuple.Create<object, AcknowledgeDelegate>("a", (delay, acknowledge) => { ack1 = acknowledge; }),
+                Tuple.Create<object, AcknowledgeDelegate>("b", (delay, acknowledge) => { ack2 = acknowledge; }),
+                Tuple.Create<object, AcknowledgeDelegate>("с", (delay, acknowledge) => { ack3 = acknowledge; })
+            });
+
+            Assert.AreEqual(0, handler.HandledEvents.Count, "Some events were handled");
+            Assert.False(ack1);
+            Assert.False(ack2);
+            Assert.False(ack3);
         }
 
         [Test]
@@ -209,25 +256,35 @@ namespace Lykke.Cqrs.Tests
         {
             var dispatcher = new EventDispatcher(_logFactory, "testBC");
             var handler = new EventHandlerWithBatchSupport();
-            dispatcher.Wire("testBC", handler, 3, 0, 
+
+            dispatcher.Wire(
+                "testBC",
+                handler,
+                3,
+                0,
                 typeof(FakeBatchContext),
                 h => ((EventHandlerWithBatchSupport)h).OnBatchStart(),
                 (h, c) => ((EventHandlerWithBatchSupport)h).OnBatchFinish((FakeBatchContext)c));
             dispatcher.Dispatch("testBC", new[]
             {
-                Tuple.Create<object,AcknowledgeDelegate>(new DateTime(2016,3,1), (delay, acknowledge) => {Tuple.Create(delay, acknowledge);  }),
-                Tuple.Create<object,AcknowledgeDelegate>(new DateTime(2016,3,2), (delay, acknowledge) => { }),
+                Tuple.Create<object, AcknowledgeDelegate>(new DateTime(2016,3,1), (delay, acknowledge) => { Tuple.Create(delay, acknowledge); }),
+                Tuple.Create<object, AcknowledgeDelegate>(new DateTime(2016,3,2), (delay, acknowledge) => { }),
             });
-            Assert.That(handler.HandledEvents.Count, Is.EqualTo(0), "Events were delivered before batch is filled");
+
+            Assert.AreEqual(0, handler.HandledEvents.Count, "Events were delivered before batch is filled");
+
             dispatcher.Dispatch("testBC", new[]
             {
-                Tuple.Create<object,AcknowledgeDelegate>(new DateTime(2016,3,3), (delay, acknowledge) => { })
+                Tuple.Create<object, AcknowledgeDelegate>(new DateTime(2016,3,3), (delay, acknowledge) => { })
             });
-            Assert.That(handler.HandledEvents.Count, Is.Not.EqualTo(0), "Events were not delivered after batch is filled");
-            Assert.That(handler.HandledEvents.Count, Is.EqualTo(3), "Not all events were delivered");
-            Assert.That(handler.BatchStartReported, Is.True, "Batch start callback was not called");
-            Assert.That(handler.BatchFinishReported, Is.True, "Batch after apply  callback was not called");
-            Assert.That(handler.HandledEvents.Select(t=>t.Item2),Is.EqualTo(new object[]{handler.LastCreatedBatchContext,handler.LastCreatedBatchContext,handler.LastCreatedBatchContext}),"Batch context was not the same for all evants in the batch");
+
+            Assert.AreEqual(3, handler.HandledEvents.Count, "Not all events were delivered");
+            Assert.True(handler.BatchStartReported, "Batch start callback was not called");
+            Assert.True(handler.BatchFinishReported, "Batch after apply  callback was not called");
+            Assert.That(
+                handler.HandledEvents.Select(t=>t.Item2),
+                Is.EqualTo(new object[]{handler.LastCreatedBatchContext,handler.LastCreatedBatchContext,handler.LastCreatedBatchContext}),
+                "Batch context was not the same for all evants in the batch");
         }
 
         [Test]
@@ -235,19 +292,32 @@ namespace Lykke.Cqrs.Tests
         {
             var dispatcher = new EventDispatcher(_logFactory, "testBC");
             var handler = new EventHandlerWithBatchSupport();
-            dispatcher.Wire("testBC", handler, 3, 1, typeof(FakeBatchContext), h => ((EventHandlerWithBatchSupport)h).OnBatchStart(), (h, c) => ((EventHandlerWithBatchSupport)h).OnBatchFinish((FakeBatchContext)c));
+
+            dispatcher.Wire(
+                "testBC",
+                handler,
+                3,
+                1,
+                typeof(FakeBatchContext),
+                h => ((EventHandlerWithBatchSupport)h).OnBatchStart(),
+                (h, c) => ((EventHandlerWithBatchSupport)h).OnBatchFinish((FakeBatchContext)c));
             dispatcher.Dispatch("testBC", new[]
             {
-                Tuple.Create<object,AcknowledgeDelegate>(new DateTime(2016,3,1), (delay, acknowledge) => {Tuple.Create(delay, acknowledge);  }),
-                Tuple.Create<object,AcknowledgeDelegate>(new DateTime(2016,3,2), (delay, acknowledge) => { })
+                Tuple.Create<object, AcknowledgeDelegate>(new DateTime(2016,3,1), (delay, acknowledge) => { Tuple.Create(delay, acknowledge); }),
+                Tuple.Create<object, AcknowledgeDelegate>(new DateTime(2016,3,2), (delay, acknowledge) => { })
             });
-            Assert.That(handler.HandledEvents.Count, Is.EqualTo(0), "Events were delivered before batch apply timeoout");
+
+            Assert.AreEqual(0, handler.HandledEvents.Count, "Events were delivered before batch apply timeoout");
+
             Thread.Sleep(2000);
-            Assert.That(handler.HandledEvents.Count, Is.Not.EqualTo(0), "Events were not delivered after batch is filled");
-            Assert.That(handler.HandledEvents.Count, Is.EqualTo(2), "Not all events were delivered");
-            Assert.That(handler.BatchStartReported, Is.True, "Batch start callback was not called");
-            Assert.That(handler.BatchFinishReported, Is.True, "Batch after apply  callback was not called");
-            Assert.That(handler.HandledEvents.Select(t => t.Item2), Is.EqualTo(new object[] { handler.LastCreatedBatchContext,  handler.LastCreatedBatchContext }), "Batch context was not the same for all evants in the batch");
+
+            Assert.AreEqual(2, handler.HandledEvents.Count, "Not all events were delivered");
+            Assert.True(handler.BatchStartReported, "Batch start callback was not called");
+            Assert.True(handler.BatchFinishReported, "Batch after apply  callback was not called");
+            Assert.That(
+                handler.HandledEvents.Select(t => t.Item2),
+                Is.EqualTo(new object[] { handler.LastCreatedBatchContext, handler.LastCreatedBatchContext }),
+                "Batch context was not the same for all evants in the batch");
         }
 
         [Test]
@@ -255,93 +325,220 @@ namespace Lykke.Cqrs.Tests
         {
             var dispatcher = new EventDispatcher(_logFactory, "testBC");
             var handler = new EventHandlerWithBatchSupport(1);
-            dispatcher.Wire("testBC", handler, 3, 0,
+            Tuple<long, bool> result = null;
+
+            dispatcher.Wire(
+                "testBC",
+                handler,
+                3,
+                0,
                 typeof(FakeBatchContext),
                 h => ((EventHandlerWithBatchSupport)h).OnBatchStart(),
                 (h, c) => ((EventHandlerWithBatchSupport)h).OnBatchFinish((FakeBatchContext)c));
-            Tuple<long, bool> result = null;
             dispatcher.Dispatch("testBC", new[]
             {
-                Tuple.Create<object,AcknowledgeDelegate>(new DateTime(2016,3,1), (delay, acknowledge) => {result = Tuple.Create(delay, acknowledge);  }),
-                Tuple.Create<object,AcknowledgeDelegate>(new DateTime(2016,3,2), (delay, acknowledge) => { }),
+                Tuple.Create<object, AcknowledgeDelegate>(new DateTime(2016,3,1), (delay, acknowledge) => { result = Tuple.Create(delay, acknowledge); }),
+                Tuple.Create<object, AcknowledgeDelegate>(new DateTime(2016,3,2), (delay, acknowledge) => { }),
             });
-            Assert.That(handler.HandledEvents.Count, Is.EqualTo(0), "Events were delivered before batch is filled");
+
+            Assert.AreEqual(0, handler.HandledEvents.Count, "Events were delivered before batch is filled");
+
             dispatcher.Dispatch("testBC", new[]
             {
-                Tuple.Create<object,AcknowledgeDelegate>(new DateTime(2016,3,3), (delay, acknowledge) => { })
+                Tuple.Create<object, AcknowledgeDelegate>(new DateTime(2016,3,3), (delay, acknowledge) => { })
             });
-            Assert.That(handler.HandledEvents.Count, Is.Not.EqualTo(0), "Events were not delivered after batch is filled");
-            Assert.That(handler.HandledEvents.Count, Is.EqualTo(3), "Not all events were delivered");
-            Assert.That(handler.BatchStartReported, Is.True, "Batch start callback was not called");
-            Assert.That(handler.BatchFinishReported, Is.True, "Batch after apply  callback was not called");
-            Assert.That(handler.HandledEvents.Select(t => t.Item2), Is.EqualTo(new object[] { handler.LastCreatedBatchContext, handler.LastCreatedBatchContext, handler.LastCreatedBatchContext }), "Batch context was not the same for all evants in the batch");
-            Assert.That(result.Item2, Is.False,"failed event was acked");
-            Assert.That(result.Item1, Is.EqualTo(10),"failed event retry timeout was wrong");
+
+            Assert.AreEqual(3, handler.HandledEvents.Count, "Not all events were delivered");
+            Assert.True(handler.BatchStartReported, "Batch start callback was not called");
+            Assert.True(handler.BatchFinishReported, "Batch after apply  callback was not called");
+            Assert.That(
+                handler.HandledEvents.Select(t => t.Item2),
+                Is.EqualTo(new object[] { handler.LastCreatedBatchContext, handler.LastCreatedBatchContext, handler.LastCreatedBatchContext }),
+                "Batch context was not the same for all evants in the batch");
+            Assert.False(result.Item2,"failed event was acked");
+            Assert.AreEqual(10, result.Item1,"failed event retry timeout was wrong");
+        }
+    }
+
+    internal class FakeBatchContext
+    {
+    }
+
+    internal class EventHandlerWithBatchSupport
+    {
+        public readonly List<Tuple<object, object>> HandledEvents = new List<Tuple<object, object>>();
+        private int _failCount;
+
+        internal EventHandlerWithBatchSupport(int failCount = 0)
+        {
+            _failCount = failCount;
         }
 
-        [Test, Ignore("integration")]
-        public void BatchDispatchUnackRmqTest()
+        [UsedImplicitly]
+        internal CommandHandlingResult Handle(DateTime e, FakeBatchContext batchContext)
         {
-            var handler = new EventHandlerWithBatchSupport(1);
-            var endpointProvider = new Mock<IEndpointProvider>();
+            HandledEvents.Add(Tuple.Create<object, object>(e, batchContext));
+            var retry = Interlocked.Decrement(ref _failCount) >= 0;
+            return new CommandHandlingResult { Retry = retry, RetryDelay = 10 };
+        }
 
-            using (
-                var messagingEngine =
-                    new MessagingEngine(
-                        _logFactory,
-                        new TransportResolver(new Dictionary<string, TransportInfo>
-                            {
-                                {"RabbitMq", new TransportInfo("amqp://localhost", "guest", "guest", null, "RabbitMq")}
-                            }), new RabbitMqTransportFactory(_logFactory)))
+        internal FakeBatchContext OnBatchStart()
+        {
+            BatchStartReported = true;
+            LastCreatedBatchContext = new FakeBatchContext();
+            return LastCreatedBatchContext;
+        }
+
+        internal FakeBatchContext LastCreatedBatchContext { get; set; }
+        internal bool BatchStartReported { get; set; }
+        internal bool BatchFinishReported { get; set; }
+
+        internal void OnBatchFinish(FakeBatchContext context)
+        {
+            BatchFinishReported = true;
+        }
+    }
+
+    internal class EventHandler
+    {
+        private readonly bool _fail;
+
+        internal readonly List<object> HandledEvents = new List<object>();
+
+        internal bool FailOnce { get; set; }
+
+        internal EventHandler(bool fail = false)
+        {
+            _fail = fail;
+        }
+
+        [UsedImplicitly]
+        internal void Handle(string e)
+        {
+            HandledEvents.Add(e);
+            if (_fail || FailOnce)
             {
-                messagingEngine.CreateTemporaryDestination("RabbitMq",null);
-           
-                var endpoint = new Endpoint("RabbitMq", "testExchange" , "testQueue", true, SerializationFormat.Json);
-                endpointProvider.Setup(r => r.Get("route")).Returns(endpoint);
-                endpointProvider.Setup(r => r.Contains("route")).Returns(true);
-
-                using (new CqrsEngine(_logFactory, new DefaultDependencyResolver(),messagingEngine, endpointProvider.Object,false,
-                    Register.BoundedContext("bc").ListeningEvents(typeof(DateTime)).From("other").On("route")
-                        .WithProjection(handler, "other",1,0,
-                            h => ((EventHandlerWithBatchSupport)h).OnBatchStart(),
-                            (h, c) => ((EventHandlerWithBatchSupport)h).OnBatchFinish((FakeBatchContext)c)
-                        )
-                ))
-                {
-                    messagingEngine.Send(DateTime.Now, endpoint);
-                    Thread.Sleep(20000);
-                }
+                FailOnce = false;
+                throw new Exception();
             }
         }
 
-        [Test]
-        public void TestExceptionForAsyncEventHadler()
+        [UsedImplicitly]
+        internal void Handle(DateTime e)
         {
-            var dispatcher = new EventDispatcher(_logFactory, "testBC");
-            var asyncHandler = new EventHandlerWithAsyncHandle();
-            dispatcher.Wire("testBC", asyncHandler);
-            int failedCount = 0;
-            dispatcher.Dispatch("testBC", "test", (delay, acknowledge) =>
+            HandledEvents.Add(e);
+            if (_fail || FailOnce)
             {
-                if (!acknowledge)
-                    ++failedCount;
-            });
-            Assert.True(1 == failedCount, "Async event handler was not processed properly");
+                FailOnce = false;
+                throw new Exception();
+            }
         }
 
-        [Test]
-        public void TestExceptionForSyncEventHadler()
+        [UsedImplicitly]
+        internal void Handle(int e)
         {
-            var dispatcher = new EventDispatcher(_logFactory, "testBC");
-            var syncHandler = new EventHandlerWithSyncHandle();
-            dispatcher.Wire("testBC", syncHandler);
-            int failedCount = 0;
-            dispatcher.Dispatch("testBC", "test", (delay, acknowledge) =>
+            HandledEvents.Add(e);
+            if (_fail || FailOnce)
             {
-                if (!acknowledge)
-                    ++failedCount;
-            });
-            Assert.True(1 == failedCount, "Sync event handler was not processed properly");
+                FailOnce = false;
+                throw new Exception();
+            }
+        }
+    }
+
+    internal class ResultEventHandler
+    {
+        private readonly bool _fail;
+        private readonly long _retryDelay;
+
+        internal readonly List<object> HandledEvents = new List<object>();
+
+        internal ResultEventHandler(bool fail = false, long retryDelay = 600)
+        {
+            _fail = fail;
+            _retryDelay = retryDelay;
+        }
+
+        [UsedImplicitly]
+        internal CommandHandlingResult Handle(string e)
+        {
+            HandledEvents.Add(e);
+            return new CommandHandlingResult { Retry = _fail, RetryDelay = _retryDelay };
+        }
+    }
+
+    internal class BatchHandler
+    {
+        private readonly bool _shouldThrow;
+
+        internal readonly List<object> HandledEvents = new List<object>();
+
+        internal BatchHandler(bool shouldThrow)
+        {
+            _shouldThrow = shouldThrow;
+        }
+
+        [UsedImplicitly]
+        internal CommandHandlingResult[] Handle(string[] e)
+        {
+            if (_shouldThrow)
+                throw new InvalidOperationException();
+
+            return e
+                .Select(i =>
+                {
+                    HandledEvents.Add(i);
+                    return CommandHandlingResult.Ok();
+                })
+                .ToArray();
+        }
+    }
+
+    internal class AsyncEventHandler
+    {
+        private readonly bool _shouldThrow;
+
+        internal readonly List<object> HandledEvents = new List<object>();
+
+        internal AsyncEventHandler(bool shouldThrow)
+        {
+            _shouldThrow = shouldThrow;
+        }
+
+        [UsedImplicitly]
+        internal async Task Handle(string evt)
+        {
+            if (_shouldThrow)
+                throw new InvalidOperationException();
+
+            await Task.Delay(1);
+
+            HandledEvents.Add(evt);
+        }
+    }
+
+    internal class AsyncResultEventHandler
+    {
+        private readonly bool _shouldThrow;
+
+        internal readonly List<object> HandledEvents = new List<object>();
+
+        internal AsyncResultEventHandler(bool shouldThrow)
+        {
+            _shouldThrow = shouldThrow;
+        }
+
+        [UsedImplicitly]
+        internal async Task<CommandHandlingResult> Handle(string evt)
+        {
+            if (_shouldThrow)
+                throw new InvalidOperationException();
+
+            await Task.Delay(1);
+
+            HandledEvents.Add(evt);
+
+            return CommandHandlingResult.Ok();
         }
     }
 }
