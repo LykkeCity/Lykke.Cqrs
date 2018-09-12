@@ -15,5 +15,12 @@ namespace Lykke.Cqrs
         /// <param name="type">Component type.</param>
         /// <returns>Registered in container component instance of provided type.</returns>
         object GetService(Type type);
+
+        /// <summary>
+        /// Checks whether provided type is registered on components container.
+        /// </summary>
+        /// <param name="type">Component type.</param>
+        /// <returns>True if specified type is registered, false - otherwise.</returns>
+        bool HasService(Type type);
     }
 }

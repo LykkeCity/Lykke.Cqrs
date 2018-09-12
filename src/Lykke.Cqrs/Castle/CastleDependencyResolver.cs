@@ -16,5 +16,10 @@ namespace Lykke.Cqrs.Castle
         {
             return m_Kernel.Resolve(type);
         }
+
+        public bool HasService(Type type)
+        {
+            return m_Kernel.HasComponent(type);
+        }
     }
 }

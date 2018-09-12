@@ -26,5 +26,11 @@ namespace Lykke.Cqrs
         {
             return _context.Resolve(type);
         }
+
+        /// <inheritdoc cref="IDependencyResolver"/>>
+        public bool HasService(Type type)
+        {
+            return _context.IsRegistered(type);
+        }
     }
 }

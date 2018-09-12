@@ -8,5 +8,10 @@ namespace Lykke.Cqrs
         {
             return Activator.CreateInstance(type);
         }
+
+        public bool HasService(Type type)
+        {
+            return !type.IsInterface;
+        }
     }
 }
