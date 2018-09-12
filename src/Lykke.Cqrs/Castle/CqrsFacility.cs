@@ -7,7 +7,6 @@ using Castle.MicroKernel;
 using Castle.MicroKernel.Context;
 using Castle.MicroKernel.Facilities;
 using Castle.MicroKernel.Registration;
-using Lykke.Common.Log;
 using Lykke.Cqrs.Configuration;
 using Lykke.Cqrs.Configuration.BoundedContext;
 using IRegistration = Lykke.Cqrs.Configuration.IRegistration;
@@ -24,7 +23,6 @@ namespace Lykke.Cqrs.Castle
         private IRegistration[] m_BoundedContexts = new IRegistration[0];
         private bool m_InMemory = false;
         private ICqrsEngine m_CqrsEngine;
-        private ILogFactory _logFactory;
 
         public bool HasEventStore { get; set; }
 
