@@ -7,6 +7,7 @@ using Castle.Facilities.Startable;
 using Castle.MicroKernel.Handlers;
 using Castle.MicroKernel.Registration;
 using Castle.Windsor;
+using Lykke.Common.Log;
 using Lykke.Cqrs.Castle;
 using Lykke.Messaging;
 using Lykke.Messaging.Configuration;
@@ -16,6 +17,8 @@ using Lykke.Cqrs;
 using Lykke.Cqrs.Configuration;
 using Lykke.Cqrs.InfrastructureCommands;
 using Lykke.Cqrs.Routing;
+using Lykke.Logs;
+using Lykke.Logs.Loggers.LykkeConsole;
 using Moq;
 using NUnit.Framework;
 using ProtoBuf;
@@ -127,6 +130,18 @@ namespace Lykke.Cqrs.Tests
     [TestFixture]
     public class CqrsFacilityTests
     {
+        private readonly ILogFactory _logFactory;
+
+        public CqrsFacilityTests()
+        {
+            _logFactory = LogFactory.Create().AddUnbufferedConsole();
+        }
+
+        public void Dispose()
+        {
+            _logFactory?.Dispose();
+        }
+
         [Test]
         public void ComponentCanNotBeProjectionAndCommandsHandlerSimultaneousely()
         {
@@ -146,7 +161,7 @@ namespace Lykke.Cqrs.Tests
             using (var container = new WindsorContainer())
             {
                 container.Register(Component.For<CqrEngineDependentComponent>());
-                container.AddFacility<CqrsFacility>(f => f.RunInMemory());
+                container.AddFacility<CqrsFacility>(f => f.SetLogFatory(_logFactory).RunInMemory());
                 try
                 {
                     container.Resolve<CqrEngineDependentComponent>();
@@ -168,7 +183,7 @@ namespace Lykke.Cqrs.Tests
         {
             using (var container = new WindsorContainer())
             {
-                container.AddFacility<CqrsFacility>(f => f.RunInMemory())
+                container.AddFacility<CqrsFacility>(f => f.SetLogFatory(_logFactory).RunInMemory())
                     .AddFacility<StartableFacility>(); // (f => f.DeferredTryStart());
                 container.Register(Component.For<IMessagingEngine>().Instance(new Mock<IMessagingEngine>().Object));
                 container.Register(Component.For<CqrEngineDependentComponent>().StartUsingMethod("Start"));
@@ -184,7 +199,7 @@ namespace Lykke.Cqrs.Tests
             using (var container = new WindsorContainer())
             {
                 container.Register(Component.For<IMessagingEngine>().Instance(new Mock<IMessagingEngine>().Object))
-                    .AddFacility<CqrsFacility>(f => f.RunInMemory().Contexts(
+                    .AddFacility<CqrsFacility>(f => f.SetLogFatory(_logFactory).RunInMemory().Contexts(
                             Register.BoundedContext("local").ListeningEvents(typeof(string)).From("remote").On("remoteEVents")
                             ))
                     .Register(Component.For<EventListener>().AsProjection("local", "remote"))
@@ -203,7 +218,7 @@ namespace Lykke.Cqrs.Tests
             using (var container = new WindsorContainer())
             {
                 container.Register(Component.For<IMessagingEngine>().Instance(new Mock<IMessagingEngine>().Object))
-                    .AddFacility<CqrsFacility>(f => f.RunInMemory().Contexts(
+                    .AddFacility<CqrsFacility>(f => f.SetLogFatory(_logFactory).RunInMemory().Contexts(
                             Register.BoundedContext("local").ListeningEvents(typeof(string)).From("remote").On("remoteEVents")
                             ))
                     .Register(Component.For<EventListenerWithBatchSupport>()
@@ -239,7 +254,7 @@ namespace Lykke.Cqrs.Tests
             {
                 container
                     .Register(Component.For<IMessagingEngine>().Instance(new Mock<IMessagingEngine>().Object))
-                    .AddFacility<CqrsFacility>(f => f.RunInMemory().Contexts(Register.BoundedContext("bc")))
+                    .AddFacility<CqrsFacility>(f => f.SetLogFatory(_logFactory).RunInMemory().Contexts(Register.BoundedContext("bc")))
                     .Register(Component.For<CommandsHandler>().AsCommandsHandler("bc").LifestyleSingleton())
                     .Resolve<ICqrsEngineBootstrapper>().Start();
                 var cqrsEngine = (CqrsEngine)container.Resolve<ICqrsEngine>();
@@ -258,7 +273,7 @@ namespace Lykke.Cqrs.Tests
                 var messagingEngine = new Mock<IMessagingEngine>().Object;
                 var bootstrapper = container
                     .Register(Component.For<IMessagingEngine>().Instance(messagingEngine))
-                    .AddFacility<CqrsFacility>(f => f.RunInMemory().Contexts(
+                    .AddFacility<CqrsFacility>(f => f.SetLogFatory(_logFactory).RunInMemory().Contexts(
                         Register.BoundedContext("bc").ListeningCommands(typeof(string)).On("cmd").WithLoopback(),
                         Register.DefaultRouting.PublishingCommands(typeof(string)).To("bc").With("cmd"))
                     )
@@ -292,7 +307,7 @@ namespace Lykke.Cqrs.Tests
             {
                 container
                     .Register(Component.For<IMessagingEngine>().Instance(new Mock<IMessagingEngine>().Object))
-                    .AddFacility<CqrsFacility>(f => f.RunInMemory().Contexts(Register.BoundedContext("bc")))
+                    .AddFacility<CqrsFacility>(f => f.SetLogFatory(_logFactory).RunInMemory().Contexts(Register.BoundedContext("bc")))
                     .Register(Component.For<CommandsHandler>().AsCommandsHandler("bc"))
                     .Resolve<ICqrsEngineBootstrapper>().Start();
                 var cqrsEngine = (CqrsEngine)container.Resolve<ICqrsEngine>();
@@ -319,7 +334,7 @@ namespace Lykke.Cqrs.Tests
             {
                 container
                     .Register(Component.For<IMessagingEngine>().Instance(new Mock<IMessagingEngine>().Object))
-                    .AddFacility<CqrsFacility>(f => f.RunInMemory().Contexts(Register.BoundedContext("bc")))
+                    .AddFacility<CqrsFacility>(f => f.SetLogFatory(_logFactory).RunInMemory().Contexts(Register.BoundedContext("bc")))
                     .Register(Component.For<CommandsHandler>().AsCommandsHandler("bc"))
                     .Resolve<ICqrsEngineBootstrapper>().Start();
                 var cqrsEngine = (CqrsEngine)container.Resolve<ICqrsEngine>();
@@ -352,7 +367,7 @@ namespace Lykke.Cqrs.Tests
             {
                 container
                     .Register(Component.For<IMessagingEngine>().Instance(new Mock<IMessagingEngine>().Object))
-                    .AddFacility<CqrsFacility>(f => f.RunInMemory().Contexts(Register.BoundedContext("bc").FailedCommandRetryDelay(100)))
+                    .AddFacility<CqrsFacility>(f => f.SetLogFatory(_logFactory).RunInMemory().Contexts(Register.BoundedContext("bc").FailedCommandRetryDelay(100)))
                     .Register(Component.For<CommandsHandler>().AsCommandsHandler("bc"))
                     .Resolve<ICqrsEngineBootstrapper>().Start();
                 var cqrsEngine = (CqrsEngine)container.Resolve<ICqrsEngine>();
