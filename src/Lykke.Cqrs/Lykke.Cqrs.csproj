@@ -1,8 +1,25 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
+    <AssemblyName>Lykke.Cqrs</AssemblyName>
+    <PackageId>Lykke.Cqrs</PackageId>
+    <PackageTags>Lykke Cqrs</PackageTags>
+    <PackageProjectUrl>https://github.com/LykkeCity/Lykke.Cqrs</PackageProjectUrl>
     <Version>1.0.1</Version>
+    <Authors>Lykke</Authors>
+    <Description>Lykke cqrs library</Description>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+    <NeutralLanguage>en-001</NeutralLanguage>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <DocumentationFile>bin\Debug\netstandard2.0\Lykke.Cqrs.xml</DocumentationFile>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+    <DocumentationFile>bin\Release\netstandard2.0\Lykke.Cqrs.xml</DocumentationFile>
   </PropertyGroup>
 
   <ItemGroup>

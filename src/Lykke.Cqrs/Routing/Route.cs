@@ -24,20 +24,11 @@ namespace Lykke.Cqrs.Routing
             Name = name;
         }
 
-        public IDictionary<RoutingKey, Endpoint> MessageRoutes
-        {
-            get { return new ReadOnlyDictionary<RoutingKey, Endpoint>(m_MessageRoutes); }
-        }
+        public IDictionary<RoutingKey, Endpoint> MessageRoutes => new ReadOnlyDictionary<RoutingKey, Endpoint>(m_MessageRoutes);
 
-        public RoutingKey[] RoutingKeys
-        {
-            get { return m_RouteResolvers.Keys.ToArray(); }
-        }
+        public RoutingKey[] RoutingKeys => m_RouteResolvers.Keys.ToArray();
 
-        public string ProcessingGroupName
-        {
-            get { return string.Format("cqrs.{0}.{1}", m_Context ?? "default", Name); }
-        }
+        public string ProcessingGroupName => $"cqrs.{m_Context ?? "default"}.{Name}";
 
         public ProcessingGroupInfo ProcessingGroup { get; set; }
 
@@ -46,7 +37,7 @@ namespace Lykke.Cqrs.Routing
             if (Type == null)
                 Type = RouteType.Commands;
             if (Type != RouteType.Commands)
-                throw new ApplicationException(string.Format("Can not publish commands with events route '{0}'.", Name));
+                throw new ApplicationException($"Can not publish commands with events route '{Name}'.");
 
             var routingKey = new RoutingKey
             {
@@ -65,7 +56,7 @@ namespace Lykke.Cqrs.Routing
             if (Type == null)
                 Type = RouteType.Commands;
             if (Type != RouteType.Commands)
-                throw new ApplicationException(string.Format("Can not subscribe for commands on events route '{0}'.", Name));
+                throw new ApplicationException($"Can not subscribe for commands on events route '{Name}'.");
 
             var routingKey = new RoutingKey
             {
@@ -83,7 +74,7 @@ namespace Lykke.Cqrs.Routing
             if (Type == null)
                 Type = RouteType.Events;
             if (Type != RouteType.Events)
-                throw new ApplicationException(string.Format("Can not publish for events with commands route '{0}'.", Name));
+                throw new ApplicationException($"Can not publish for events with commands route '{Name}'.");
 
             var routingKey = new RoutingKey
             {
@@ -101,7 +92,7 @@ namespace Lykke.Cqrs.Routing
             if (Type == null)
                 Type = RouteType.Events;
             if (Type != RouteType.Events)
-                throw new ApplicationException(string.Format("Can not subscribe for events on commands route '{0}'.", Name));
+                throw new ApplicationException($"Can not subscribe for events on commands route '{Name}'.");
 
             var routingKey = new RoutingKey
             {
@@ -116,10 +107,7 @@ namespace Lykke.Cqrs.Routing
             m_RouteResolvers[routingKey] = resolver;
         }
 
-        public Endpoint this[RoutingKey key]
-        {
-            get { return m_MessageRoutes[key]; }
-        }
+        public Endpoint this[RoutingKey key] => m_MessageRoutes[key];
 
         public void Resolve(IEndpointProvider endpointProvider)
         {

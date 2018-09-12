@@ -419,21 +419,20 @@ namespace Lykke.Cqrs
 
         protected virtual void Dispose(bool disposing)
         {
-            if (disposing)
-            {
-                Contexts
-                    .Where(b => b != null && b.Processes != null)
-                    .SelectMany(p => p.Processes)
-                    .ToList()
-                    .ForEach(process => process.Dispose());
-                Contexts
-                    .Where(b => b != null)
-                    .ToList()
-                    .ForEach(context => context.Dispose());
+            if (!disposing)
+                return;
 
-                if (_subscription != null)
-                    _subscription.Dispose();
-            }
+            Contexts
+                .Where(b => b?.Processes != null)
+                .SelectMany(p => p.Processes)
+                .ToList()
+                .ForEach(process => process.Dispose());
+            Contexts
+                .Where(b => b != null)
+                .ToList()
+                .ForEach(context => context.Dispose());
+
+            _subscription?.Dispose();
         }
 
         public void SendCommand<T>(T command, string boundedContext, string remoteBoundedContext, uint priority = 0)

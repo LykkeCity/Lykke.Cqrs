@@ -26,9 +26,9 @@ namespace Lykke.Cqrs.Configuration
             return AddDescriptor(new ListeningEventsDescriptor<TRegistration>(this as TRegistration, types));
         }
 
-        public IPublishingCommandsDescriptor<TRegistration> PublishingCommands(params Type[] commandsTypes)
+        public IPublishingCommandsDescriptor<TRegistration> PublishingCommands(params Type[] commandTypes)
         {
-            return AddDescriptor(new PublishingCommandsDescriptor<TRegistration>(this as TRegistration, commandsTypes));
+            return AddDescriptor(new PublishingCommandsDescriptor<TRegistration>(this as TRegistration, commandTypes));
         }
 
         public ProcessingOptionsDescriptor<TRegistration> ProcessingOptions(string route)

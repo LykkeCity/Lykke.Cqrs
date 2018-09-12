@@ -5,6 +5,8 @@ namespace Lykke.Cqrs.Configuration.BoundedContext
 {
     public class BoundedContextRegistration : ContextRegistrationBase<IBoundedContextRegistration>, IBoundedContextRegistration
     {
+        public long FailedCommandRetryDelayInternal { get; set; }
+
         public bool HasEventStore { get; set; }
 
         public BoundedContextRegistration(string name):base(name)
@@ -12,35 +14,41 @@ namespace Lykke.Cqrs.Configuration.BoundedContext
             FailedCommandRetryDelayInternal = 60000;
         }
 
-        public long FailedCommandRetryDelayInternal { get; set; }
-
         protected override Context CreateContext(CqrsEngine cqrsEngine)
         {
             return new Context(cqrsEngine, Name, FailedCommandRetryDelayInternal);
         }
 
-        public IListeningRouteDescriptor<ListeningCommandsDescriptor<IBoundedContextRegistration>> ListeningCommands(params Type[] types)
+        public IListeningRouteDescriptor<ListeningCommandsDescriptor<IBoundedContextRegistration>> ListeningCommands(params Type[] commandTypes)
         {
-            return AddDescriptor(new ListeningCommandsDescriptor<IBoundedContextRegistration>(this, types));
+            return AddDescriptor(new ListeningCommandsDescriptor<IBoundedContextRegistration>(this, commandTypes));
         }
 
-        public IPublishingRouteDescriptor<PublishingEventsDescriptor<IBoundedContextRegistration>> PublishingEvents(params Type[] types)
+        public IPublishingRouteDescriptor<PublishingEventsDescriptor<IBoundedContextRegistration>> PublishingEvents(params Type[] eventTypes)
         {
-            return AddDescriptor(new PublishingEventsDescriptor<IBoundedContextRegistration>(this, types));
+            return AddDescriptor(new PublishingEventsDescriptor<IBoundedContextRegistration>(this, eventTypes));
         }
  
         public IBoundedContextRegistration FailedCommandRetryDelay(long delay)
         {
             if (delay < 0)
-                throw new ArgumentException("threadCount should be greater or equal to 0", "delay");
+                throw new ArgumentException("Delay value must be greater or equal to 0", nameof(delay));
             FailedCommandRetryDelayInternal = delay;
+            return this;
+        }
+
+        public IBoundedContextRegistration FailedCommandRetryDelay(TimeSpan delay)
+        {
+            if (delay.Ticks < 0)
+                throw new ArgumentException("Delay value must be non-negative", nameof(delay));
+            FailedCommandRetryDelayInternal = (long)delay.TotalMilliseconds;
             return this;
         }
 
         public IBoundedContextRegistration WithCommandsHandler(object handler)
         {
             if (handler == null)
-                throw new ArgumentNullException("handler");
+                throw new ArgumentNullException();
             AddDescriptor(new CommandsHandlerDescriptor(handler));
             return this;
         }
@@ -60,7 +68,7 @@ namespace Lykke.Cqrs.Configuration.BoundedContext
         public IBoundedContextRegistration WithCommandsHandler(Type handler)
         {
             if (handler == null)
-                throw new ArgumentNullException("handler");
+                throw new ArgumentNullException();
             AddDescriptor(new CommandsHandlerDescriptor(handler));
             return this;
         }
@@ -157,7 +165,7 @@ namespace Lykke.Cqrs.Configuration.BoundedContext
             Action<TProjection, TBatchContext> afterBatchApply)
         {
             if (projection == null)
-                throw new ArgumentNullException("projection");
+                throw new ArgumentNullException(nameof(projection));
             Func<object, object> beforeApply = (beforeBatchApply == null) 
                 ? (Func<object, object>)null 
                 : o => beforeBatchApply((TProjection)o);
@@ -186,7 +194,7 @@ namespace Lykke.Cqrs.Configuration.BoundedContext
             Action<object, object> afterBatchApply = null)
         {
             if (projection == null)
-                throw new ArgumentNullException("projection");
+                throw new ArgumentNullException(nameof(projection));
             AddDescriptor(
                 new ProjectionDescriptor(
                     projection,
@@ -208,7 +216,7 @@ namespace Lykke.Cqrs.Configuration.BoundedContext
            Action<object, object> afterBatchApply = null)
         {
             if (projection == null)
-                throw new ArgumentNullException("projection");
+                throw new ArgumentNullException(nameof(projection));
             AddDescriptor(
                 new ProjectionDescriptor(
                     projection,

@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using Common.Log;
+using JetBrains.Annotations;
 using Lykke.Common.Log;
 using Lykke.Messaging;
 using Lykke.Messaging.Configuration;
@@ -19,19 +19,21 @@ namespace Lykke.Cqrs.Tests
 {
     class CommandHandler
     {
-        public List<object> AcceptedCommands = new List<object>();
-
         private int m_ProcessingTimeout;
+
+        public List<object> AcceptedCommands = new List<object>();
 
         public CommandHandler(int processingTimeout)
         {
             m_ProcessingTimeout = processingTimeout;
         }
+
         public CommandHandler()
             : this(0)
         {
         }
 
+        [UsedImplicitly]
         public void Handle(string command, IEventPublisher eventPublisher)
         {
             Thread.Sleep(m_ProcessingTimeout);
@@ -39,6 +41,7 @@ namespace Lykke.Cqrs.Tests
             AcceptedCommands.Add(command);
         }
 
+        [UsedImplicitly]
         public void Handle(CreateCashOutCommand command, IEventPublisher eventPublisher)
         {
             Thread.Sleep(m_ProcessingTimeout);
@@ -67,24 +70,23 @@ namespace Lykke.Cqrs.Tests
         [Test]
         public void ListenSameCommandOnDifferentEndpointsTest()
         {
-            using (
-                var messagingEngine =
-                    new MessagingEngine(
-                        new LogToConsole(),
-                        new TransportResolver(new Dictionary<string, TransportInfo>
-                            {
-                                {"InMemory", new TransportInfo("none", "none", "none", null, "InMemory")}
-                            })))
+            using (var messagingEngine = new MessagingEngine(
+                _logFactory,
+                new TransportResolver(new Dictionary<string, TransportInfo>
+                    {
+                        {"InMemory", new TransportInfo("none", "none", "none", null, "InMemory")}
+                    })))
             {
                 var commandHandler = new CommandHandler();
-                using (var engine = new CqrsEngine(new LogToConsole(), messagingEngine,
-                                                   Register.DefaultEndpointResolver(new InMemoryEndpointResolver()),
-                                                   Register.BoundedContext("bc")
-                                                                      .PublishingEvents(typeof(int)).With("eventExchange")
-                                                                      .ListeningCommands(typeof(string)).On("exchange1")
-                                                                      .ListeningCommands(typeof(string)).On("exchange2")
-                                                                      .WithCommandsHandler(commandHandler))
-                    )
+                using (new CqrsEngine(
+                    _logFactory,
+                    messagingEngine,
+                        Register.DefaultEndpointResolver(new InMemoryEndpointResolver()),
+                        Register.BoundedContext("bc")
+                           .PublishingEvents(typeof(int)).With("eventExchange")
+                           .ListeningCommands(typeof(string)).On("exchange1")
+                           .ListeningCommands(typeof(string)).On("exchange2")
+                           .WithCommandsHandler(commandHandler)))
                 {
                     messagingEngine.Send("test1", new Endpoint("InMemory", "exchange1", serializationFormat: SerializationFormat.Json));
                     messagingEngine.Send("test2", new Endpoint("InMemory", "exchange2", serializationFormat: SerializationFormat.Json));
@@ -100,24 +102,22 @@ namespace Lykke.Cqrs.Tests
         {
             var bcCommands = new Endpoint("InMemory", "bcCommands", serializationFormat: SerializationFormat.Json);
             var defaultCommands = new Endpoint("InMemory", "defaultCommands", serializationFormat: SerializationFormat.Json);
-            using (
-                var messagingEngine =
-                    new MessagingEngine(
-                        new LogToConsole(),
-                        new TransportResolver(new Dictionary<string, TransportInfo>
-                            {
-                                {"InMemory", new TransportInfo("none", "none", "none", null, "InMemory")}
-                            })))
+            using (var messagingEngine = new MessagingEngine(
+                _logFactory,
+                new TransportResolver(new Dictionary<string, TransportInfo>
+                    {
+                        {"InMemory", new TransportInfo("none", "none", "none", null, "InMemory")}
+                    })))
             {
-                using (var engine = new CqrsEngine(new LogToConsole(), messagingEngine,
-                                                                      Register.DefaultEndpointResolver(new InMemoryEndpointResolver()),
-                                                                      Register.BoundedContext("bc2")
-                                                                        .PublishingCommands(typeof(int)).To("bc1").With("bcCommands"),
-                                                                      Register.DefaultRouting
-                                                                        .PublishingCommands(typeof(string)).To("bc1").With("defaultCommands")
-                                                                        .PublishingCommands(typeof(int)).To("bc1").With("defaultCommands")
-                                                                      )
-                    )
+                using (var engine = new CqrsEngine(
+                    _logFactory,
+                    messagingEngine,
+                    Register.DefaultEndpointResolver(new InMemoryEndpointResolver()),
+                    Register.BoundedContext("bc2")
+                        .PublishingCommands(typeof(int)).To("bc1").With("bcCommands"),
+                    Register.DefaultRouting
+                        .PublishingCommands(typeof(string)).To("bc1").With("defaultCommands")
+                        .PublishingCommands(typeof(int)).To("bc1").With("defaultCommands")))
                 {
                     var received = new AutoResetEvent(false);
                     using (messagingEngine.Subscribe(defaultCommands, o => received.Set(), s => { }, typeof(string)))
@@ -138,17 +138,18 @@ namespace Lykke.Cqrs.Tests
         [Test, Ignore("integration")]
         public void SagaTest()
         {
-            using (
-                var messagingEngine =
-                    new MessagingEngine(
-                        new LogToConsole(),
-                        new TransportResolver(new Dictionary<string, TransportInfo>
-                            {
-                                {"rmq", new TransportInfo("amqp://localhost/LKK", "guest", "guest", "None", "RabbitMq")}
-                            }), new RabbitMqTransportFactory()))
+            using (var messagingEngine = new MessagingEngine(
+                _logFactory,
+                new TransportResolver(new Dictionary<string, TransportInfo>
+                    {
+                        {"rmq", new TransportInfo("amqp://localhost/LKK", "guest", "guest", "None", "RabbitMq")}
+                    }),
+                new RabbitMqTransportFactory(_logFactory)))
             {
                 var commandHandler = new CommandHandler();
-                using (var engine = new CqrsEngine(new LogToConsole(), messagingEngine,
+                using (var engine = new CqrsEngine(
+                    _logFactory,
+                    messagingEngine,
                     Register.DefaultEndpointResolver(
                         new RabbitMqConventionEndpointResolver("rmq", SerializationFormat.Json, environment: "dev")),
                     Register.BoundedContext("operations")
@@ -184,19 +185,18 @@ namespace Lykke.Cqrs.Tests
             endpointProvider.Setup(r => r.Get("low")).Returns(new Endpoint("InMemory", "low", true, SerializationFormat.Json));
             endpointProvider.Setup(r => r.Get("medium")).Returns(new Endpoint("InMemory", "medium", true, SerializationFormat.Json));
 
-            var messagingEngine =
-                new MessagingEngine(
-                    new LogToConsole(),
-                    new TransportResolver(new Dictionary<string, TransportInfo>
-                    {
-                        {"InMemory", new TransportInfo("none", "none", "none", null, "InMemory")},
-                        {"rmq", new TransportInfo("none", "none", "none", null, "InMemory")}
-                    }));
-            using (messagingEngine)
+            using (var messagingEngine = new MessagingEngine(
+                _logFactory,
+                new TransportResolver(new Dictionary<string, TransportInfo>
+                {
+                    {"InMemory", new TransportInfo("none", "none", "none", null, "InMemory")},
+                    {"rmq", new TransportInfo("none", "none", "none", null, "InMemory")}
+                })))
             {
-
-
-                new CqrsEngine(new LogToConsole(), messagingEngine, endpointProvider.Object,
+                new CqrsEngine(
+                    _logFactory,
+                    messagingEngine,
+                    endpointProvider.Object,
                     Register.BoundedContext("bc")
                         .PublishingCommands(typeof(string)).To("operations").With("operationsCommandsRoute")
                         .ListeningEvents(typeof(int)).From("operations").On("operationEventsRoute")
@@ -206,8 +206,6 @@ namespace Lykke.Cqrs.Tests
                         .PublishingEvents(typeof(int)).With("eventsRoute")
                             //same as.ListeningEvents(typeof(int)).From("bc").On("selfEventsRoute")
                             .WithLoopback("selfEventsRoute")
-
-
 
                         //explicit prioritization 
                         .ListeningCommands(typeof(string)).On("explicitlyPrioritizedCommandsRoute")
@@ -239,27 +237,27 @@ namespace Lykke.Cqrs.Tests
             var endpointProvider = new Mock<IEndpointProvider>();
             endpointProvider.Setup(r => r.Get("exchange1")).Returns(new Endpoint("InMemory", "bc.exchange1", true, SerializationFormat.Json));
             endpointProvider.Setup(r => r.Get("exchange2")).Returns(new Endpoint("InMemory", "bc.exchange2", true, SerializationFormat.Json));
-            using (
-                var messagingEngine =
-                    new MessagingEngine(
-                        new LogToConsole(),
-                        new TransportResolver(new Dictionary<string, TransportInfo>
-                            {
-                                {"InMemory", new TransportInfo("none", "none", "none", null, "InMemory")}
-                            })))
+            using (var messagingEngine = new MessagingEngine(
+                _logFactory,
+                new TransportResolver(new Dictionary<string, TransportInfo>
+                    {
+                        {"InMemory", new TransportInfo("none", "none", "none", null, "InMemory")}
+                    })))
             {
                 var commandHandler = new CommandHandler(100);
-                using (var engine = new CqrsEngine(new LogToConsole(), messagingEngine, endpointProvider.Object,
-                                                   Register.DefaultEndpointResolver(new InMemoryEndpointResolver()),
-                                                   Register.BoundedContext("bc")
-                                                    .PublishingEvents(typeof(int)).With("eventExchange").WithLoopback("eventQueue")
-                                                    .ListeningCommands(typeof(string)).On("commandsRoute")
-                                                        .Prioritized(lowestPriority: 1)
-                                                            .WithEndpoint("exchange1").For(key => key.Priority == 1)
-                                                            .WithEndpoint("exchange2").For(key => key.Priority == 2)
-                                                    .ProcessingOptions("commandsRoute").MultiThreaded(2)
-                                                    .WithCommandsHandler(commandHandler))
-                    )
+                using (new CqrsEngine(
+                    _logFactory,
+                    messagingEngine,
+                    endpointProvider.Object,
+                    Register.DefaultEndpointResolver(new InMemoryEndpointResolver()),
+                    Register.BoundedContext("bc")
+                        .PublishingEvents(typeof(int)).With("eventExchange").WithLoopback("eventQueue")
+                        .ListeningCommands(typeof(string)).On("commandsRoute")
+                            .Prioritized(lowestPriority: 1)
+                                .WithEndpoint("exchange1").For(key => key.Priority == 1)
+                                .WithEndpoint("exchange2").For(key => key.Priority == 2)
+                        .ProcessingOptions("commandsRoute").MultiThreaded(2)
+                        .WithCommandsHandler(commandHandler)))
                 {
                     messagingEngine.Send("low1", new Endpoint("InMemory", "bc.exchange2", serializationFormat: SerializationFormat.Json));
                     messagingEngine.Send("low2", new Endpoint("InMemory", "bc.exchange2", serializationFormat: SerializationFormat.Json));
@@ -397,12 +395,13 @@ namespace Lykke.Cqrs.Tests
             var testProcess = new TestProcess();
             var commandHandler = new CommandHandler();
             using (new InMemoryCqrsEngine(
-             Register.BoundedContext("local")
-                                .ListeningCommands(typeof(string)).On("commands1").WithLoopback()
-                                .PublishingEvents(typeof(int)).With("events").WithLoopback()
-                                .WithCommandsHandler(commandHandler)
-                                .WithProcess(testProcess)
-             ))
+                _logFactory,
+                Register.BoundedContext("local")
+                    .ListeningCommands(typeof(string)).On("commands1").WithLoopback()
+                    .PublishingEvents(typeof(int)).With("events").WithLoopback()
+                    .WithCommandsHandler(commandHandler)
+                    .WithProcess(testProcess)
+            ))
             {
                 Assert.That(testProcess.Started.WaitOne(1000), Is.True, "process was not started");
                 Thread.Sleep(1000);

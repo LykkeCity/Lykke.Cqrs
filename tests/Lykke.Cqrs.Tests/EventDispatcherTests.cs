@@ -5,15 +5,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using JetBrains.Annotations;
 using Lykke.Common.Log;
-using Lykke.Messaging;
-using Lykke.Messaging.Configuration;
 using Lykke.Messaging.Contract;
-using Lykke.Messaging.RabbitMq;
-using Lykke.Messaging.Serialization;
-using Lykke.Cqrs.Configuration;
 using Lykke.Logs;
 using Lykke.Logs.Loggers.LykkeConsole;
-using Moq;
 using NUnit.Framework;
 
 namespace Lykke.Cqrs.Tests
