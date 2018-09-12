@@ -28,7 +28,7 @@ namespace Lykke.Cqrs.Castle
 
         public bool HasEventStore { get; set; }
 
-        public CqrsFacility SetLogFatory(ILogFactory logFactory)
+        public CqrsFacility SetLogFactory(ILogFactory logFactory)
         {
             _logFactory = logFactory;
             return this;
@@ -158,7 +158,7 @@ namespace Lykke.Cqrs.Castle
         public void Start()
         {
             if (_logFactory == null)
-                throw new InvalidOperationException("LogFatory must be set - Use CqrsFacility.SetLogFatory method.");
+                throw new InvalidOperationException("LogFatory must be set - Use CqrsFacility.SetLogFactory method.");
             Kernel.Register(Component.For<ILogFactory>().Instance(_logFactory));
 
             var engineReg = m_InMemory
