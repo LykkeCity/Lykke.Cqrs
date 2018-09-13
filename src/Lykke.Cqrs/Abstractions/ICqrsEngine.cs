@@ -24,5 +24,10 @@ namespace Lykke.Cqrs
         /// <param name="event">Cqrs event.</param>
         /// <param name="boundedContext">Source context.</param>
         void PublishEvent(object @event, string boundedContext);
+
+        /// <summary>
+        /// Triggers cqrs engine init procedures.
+        /// </summary>
+        void Start();
     }
 }
