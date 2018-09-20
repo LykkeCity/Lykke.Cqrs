@@ -3,8 +3,8 @@ using System.Collections.Generic;
 
 namespace Lykke.Cqrs.Configuration.Routing
 {
-    public abstract class ListeningRouteDescriptor<TDescriptor,TRegistration> 
-        : RouteDescriptorBase<TDescriptor,TRegistration>, IListeningRouteDescriptor<TDescriptor> 
+    public abstract class ListeningRouteDescriptor<TDescriptor, TRegistration> 
+        : RouteDescriptorBase<TDescriptor, TRegistration>, IListeningRouteDescriptor<TDescriptor> 
         where TDescriptor :  RouteDescriptorBase<TRegistration>
         where TRegistration : IRegistration
     {
@@ -23,7 +23,7 @@ namespace Lykke.Cqrs.Configuration.Routing
         }
 
         public abstract IEnumerable<Type> GetDependencies();
-        public abstract void Create(IRouteMap routeMap, IDependencyResolver resolver);
-        public abstract void Process(IRouteMap routeMap, CqrsEngine cqrsEngine);
+        public abstract void Create(Context context, IDependencyResolver resolver);
+        public abstract void Process(Context context, CqrsEngine cqrsEngine);
     }
 }

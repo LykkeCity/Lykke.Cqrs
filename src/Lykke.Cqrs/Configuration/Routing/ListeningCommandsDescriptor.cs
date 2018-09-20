@@ -27,7 +27,7 @@ namespace Lykke.Cqrs.Configuration.Routing
             return this;
         }
 
-        public override void Create(IRouteMap routeMap, IDependencyResolver resolver)
+        public override void Create(Context context, IDependencyResolver resolver)
         {
             foreach (var type in Types)
             {
@@ -35,19 +35,24 @@ namespace Lykke.Cqrs.Configuration.Routing
                 {
                     for (uint priority = 1; priority <= LowestPriority; priority++)
                     {
-                        routeMap[Route].AddSubscribedCommand(type, priority, EndpointResolver);
+                        ((IRouteMap)context)[Route].AddSubscribedCommand(type, priority, EndpointResolver);
                     }
                 }
                 else
                 {
-                    routeMap[Route].AddSubscribedCommand(type, 0, EndpointResolver);
+                    ((IRouteMap)context)[Route].AddSubscribedCommand(type, 0, EndpointResolver);
                 }
             }
         }
 
-        public override void Process(IRouteMap routeMap, CqrsEngine cqrsEngine)
+        public override void Process(Context context, CqrsEngine cqrsEngine)
         {
             EndpointResolver.SetFallbackResolver(cqrsEngine.EndpointResolver);
+
+            var notHandledCommandTypeNames = context.CommandDispatcher.CheckHandledTypes(Types);
+            if (notHandledCommandTypeNames.Count > 0)
+                throw new InvalidOperationException(
+                    $"Command types ({string.Join(", ", notHandledCommandTypeNames)}) that are listened on route '{Route}' have no handler");
         }
     }
 }

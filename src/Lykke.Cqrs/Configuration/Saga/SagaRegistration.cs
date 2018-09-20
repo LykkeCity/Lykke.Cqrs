@@ -6,7 +6,7 @@ namespace Lykke.Cqrs.Configuration.Saga
     {
         public SagaRegistration(string name, Type type) : base(name)
         {
-            AddDescriptor(new SagaDescriptor(type));
+            AddDescriptorToStart(new SagaDescriptor(type));
         }
 
         protected override Context CreateContext(CqrsEngine cqrsEngine)

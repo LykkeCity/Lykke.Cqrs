@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using JetBrains.Annotations;
 using Lykke.Common.Log;
 using Lykke.Messaging;
 using Lykke.Messaging.Configuration;
@@ -17,43 +16,8 @@ using NUnit.Framework;
 
 namespace Lykke.Cqrs.Tests
 {
-    class CommandHandler
-    {
-        private int m_ProcessingTimeout;
-
-        public List<object> AcceptedCommands = new List<object>();
-
-        public CommandHandler(int processingTimeout)
-        {
-            m_ProcessingTimeout = processingTimeout;
-        }
-
-        public CommandHandler()
-            : this(0)
-        {
-        }
-
-        [UsedImplicitly]
-        public void Handle(string command, IEventPublisher eventPublisher)
-        {
-            Thread.Sleep(m_ProcessingTimeout);
-
-            AcceptedCommands.Add(command);
-        }
-
-        [UsedImplicitly]
-        public void Handle(CreateCashOutCommand command, IEventPublisher eventPublisher)
-        {
-            Thread.Sleep(m_ProcessingTimeout);
-
-            Console.WriteLine(Thread.CurrentThread.ManagedThreadId + " command recived:" + command.Payload);
-
-            eventPublisher.PublishEvent(new CashOutCreatedEvent());
-        }
-    }
-
     [TestFixture]
-    public class CqrsEngineTests
+    internal class CqrsEngineTests
     {
         private readonly ILogFactory _logFactory;
 
@@ -70,6 +34,8 @@ namespace Lykke.Cqrs.Tests
         [Test]
         public void ListenSameCommandOnDifferentEndpointsTest()
         {
+            var commandHandler = new CommandsHandler();
+
             using (var messagingEngine = new MessagingEngine(
                 _logFactory,
                 new TransportResolver(new Dictionary<string, TransportInfo>
@@ -77,7 +43,6 @@ namespace Lykke.Cqrs.Tests
                         {"InMemory", new TransportInfo("none", "none", "none", null, "InMemory")}
                     })))
             {
-                var commandHandler = new CommandHandler();
                 using (var engine = new CqrsEngine(
                     _logFactory,
                     messagingEngine,
@@ -92,8 +57,9 @@ namespace Lykke.Cqrs.Tests
                     messagingEngine.Send("test1", new Endpoint("InMemory", "exchange1", serializationFormat: SerializationFormat.Json));
                     messagingEngine.Send("test2", new Endpoint("InMemory", "exchange2", serializationFormat: SerializationFormat.Json));
                     messagingEngine.Send("test3", new Endpoint("InMemory", "exchange3", serializationFormat: SerializationFormat.Json));
-                    Thread.Sleep(6000);
-                    Assert.That(commandHandler.AcceptedCommands, Is.EquivalentTo(new[] { "test1", "test2" }));
+                    Thread.Sleep(7000);
+
+                    Assert.That(commandHandler.HandledCommands, Is.EquivalentTo(new[] { "test1", "test2" }));
                 }
             }
         }
@@ -140,6 +106,8 @@ namespace Lykke.Cqrs.Tests
         [Test, Ignore("integration")]
         public void SagaTest()
         {
+            var commandHandler = new CustomCommandsHandler();
+
             using (var messagingEngine = new MessagingEngine(
                 _logFactory,
                 new TransportResolver(new Dictionary<string, TransportInfo>
@@ -148,7 +116,6 @@ namespace Lykke.Cqrs.Tests
                     }),
                 new RabbitMqTransportFactory(_logFactory)))
             {
-                var commandHandler = new CommandHandler();
                 using (var engine = new CqrsEngine(
                     _logFactory,
                     messagingEngine,
@@ -174,8 +141,7 @@ namespace Lykke.Cqrs.Tests
                     engine.Start();
                     engine.SendCommand(new CreateCashOutCommand { Payload = "test data" }, null, "lykke-wallet");
 
-                    Assert.That(TestSaga.Complete.WaitOne(2000), Is.True,
-                        "Saga has not got events or failed to send command");
+                    Assert.True(TestSaga.Complete.WaitOne(2000), "Saga has not got events or failed to send command");
                 }
             }
         }
@@ -202,13 +168,10 @@ namespace Lykke.Cqrs.Tests
                     endpointProvider.Object,
                     Register.BoundedContext("bc")
                         .PublishingCommands(typeof(string)).To("operations").With("operationsCommandsRoute")
-                        .ListeningEvents(typeof(int)).From("operations").On("operationEventsRoute")
                         .ListeningCommands(typeof(string)).On("commandsRoute")
                         //same as .PublishingCommands(typeof(string)).To("bc").With("selfCommandsRoute")  
                         .WithLoopback("selfCommandsRoute")
                         .PublishingEvents(typeof(int)).With("eventsRoute")
-                        //same as.ListeningEvents(typeof(int)).From("bc").On("selfEventsRoute")
-                        .WithLoopback("selfEventsRoute")
 
                         //explicit prioritization 
                         .ListeningCommands(typeof(string)).On("explicitlyPrioritizedCommandsRoute")
@@ -221,6 +184,7 @@ namespace Lykke.Cqrs.Tests
                         .ListeningCommands(typeof(string)).On("prioritizedCommandsRoute")
                         .Prioritized(lowestPriority: 2)
                         .WithEndpointResolver(new InMemoryEndpointResolver())
+                        .WithCommandsHandler(typeof(CommandsHandler))
                         .ProcessingOptions("explicitlyPrioritizedCommandsRoute").MultiThreaded(10)
                         .ProcessingOptions("prioritizedCommandsRoute").MultiThreaded(10).QueueCapacity(1024),
                     Register.Saga<TestSaga>("saga")
@@ -244,6 +208,8 @@ namespace Lykke.Cqrs.Tests
             var endpointProvider = new Mock<IEndpointProvider>();
             endpointProvider.Setup(r => r.Get("exchange1")).Returns(new Endpoint("InMemory", "bc.exchange1", true, SerializationFormat.Json));
             endpointProvider.Setup(r => r.Get("exchange2")).Returns(new Endpoint("InMemory", "bc.exchange2", true, SerializationFormat.Json));
+            var commandHandler = new CommandsHandler(false, 100);
+
             using (var messagingEngine = new MessagingEngine(
                 _logFactory,
                 new TransportResolver(new Dictionary<string, TransportInfo>
@@ -251,14 +217,13 @@ namespace Lykke.Cqrs.Tests
                         {"InMemory", new TransportInfo("none", "none", "none", null, "InMemory")}
                     })))
             {
-                var commandHandler = new CommandHandler(100);
                 using (var engine = new CqrsEngine(
                     _logFactory,
                     messagingEngine,
                     endpointProvider.Object,
                     Register.DefaultEndpointResolver(new InMemoryEndpointResolver()),
                     Register.BoundedContext("bc")
-                        .PublishingEvents(typeof(int)).With("eventExchange").WithLoopback("eventQueue")
+                        .PublishingEvents(typeof(int)).With("eventExchange")//.WithLoopback("eventQueue")
                         .ListeningCommands(typeof(string)).On("commandsRoute")
                             .Prioritized(lowestPriority: 1)
                                 .WithEndpoint("exchange1").For(key => key.Priority == 1)
@@ -279,8 +244,8 @@ namespace Lykke.Cqrs.Tests
                     messagingEngine.Send("low10", new Endpoint("InMemory", "bc.exchange2", serializationFormat: SerializationFormat.Json));
                     messagingEngine.Send("high", new Endpoint("InMemory", "bc.exchange1", serializationFormat: SerializationFormat.Json));
                     Thread.Sleep(2000);
-                    Console.WriteLine(string.Join("\n", commandHandler.AcceptedCommands));
-                    Assert.That(commandHandler.AcceptedCommands.Take(2).Any(c => (string)c == "high"), Is.True);
+
+                    Assert.True(commandHandler.HandledCommands.Take(2).Any(c => (string)c == "high"));
                 }
             }
         }
@@ -401,24 +366,23 @@ namespace Lykke.Cqrs.Tests
         public void ProcessTest()
         {
             var testProcess = new TestProcess();
-            var commandHandler = new CommandHandler();
+            var commandHandler = new CommandsHandler();
             using (var engine = new InMemoryCqrsEngine(
                 _logFactory,
                 Register.BoundedContext("local")
                     .ListeningCommands(typeof(string)).On("commands1").WithLoopback()
-                    .PublishingEvents(typeof(int)).With("events").WithLoopback()
+                    .PublishingEvents(typeof(int)).With("events")
                     .WithCommandsHandler(commandHandler)
                     .WithProcess(testProcess)
             ))
             {
                 engine.Start();
-                Assert.That(testProcess.Started.WaitOne(1000), Is.True, "process was not started");
+                Assert.True(testProcess.Started.WaitOne(1000), "process was not started");
                 Thread.Sleep(1000);
-                Console.WriteLine("Disposing...");
             }
-            Assert.That(testProcess.Disposed.WaitOne(1000), Is.True, "process was not disposed on engine dispose");
-            Assert.That(commandHandler.AcceptedCommands.Count, Is.GreaterThan(0), "commands sent by process were not processed");
-            Console.WriteLine("Dispose completed.");
+
+            Assert.True(testProcess.Disposed.WaitOne(1000), "process was not disposed on engine dispose");
+            Assert.True(commandHandler.HandledCommands.Count > 0, "commands sent by process were not processed");
         }
 
         /*
@@ -437,7 +401,7 @@ namespace Lykke.Cqrs.Tests
                                     .To("events")
                                     .RoutedTo("events")
                                     .ListeningCommands(typeof (string)).On("commands1").RoutedFromSameEndpoint()
-                                    .WithCommandsHandler<CommandHandler>()
+                                    .WithCommandsHandler<CommandsHandler>()
                                     .WithProcess<TestProcess>()
                                     .WithEventStore(dispatchCommits => Wireup.Init()
                                                                             .LogTo(type => log)
@@ -592,79 +556,49 @@ namespace Lykke.Cqrs.Tests
                 }
             }
         }
-    }
 
-    public class TestProcess : IProcess
-    {
-        private readonly Thread _workerThread;
-
-        private ICommandSender m_CommandSender;
-
-        public ManualResetEvent Started = new ManualResetEvent(false);
-        public ManualResetEvent Disposed = new ManualResetEvent(false);
-
-        public TestProcess()
+        [Test]
+        public void UnhandledListenedEventsTest()
         {
-            _workerThread = new Thread(SendCommands);
-        }
-
-        private void SendCommands(object obj)
-        {
-
-            int i = 0;
-            do
+            using (var messagingEngine = new MessagingEngine(
+                _logFactory,
+                new TransportResolver(new Dictionary<string, TransportInfo>
+                {
+                    {"InMemory", new TransportInfo("none", "none", "none", null, "InMemory")}
+                })))
             {
-                m_CommandSender.SendCommand("command #" + i++, "local");
-            } while (!Disposed.WaitOne(100));
-
-        }
-
-        public void Start(ICommandSender commandSender, IEventPublisher eventPublisher)
-        {
-            m_CommandSender = commandSender;
-            _workerThread.Start();
-            Console.WriteLine("Test process started");
-            Started.Set();
-        }
-
-        public void Dispose()
-        {
-            Console.WriteLine("Test process disposed");
-            Disposed.Set();
-        }
-    }
-
-    public class TestProcess1 : IProcess
-    {
-        private readonly ManualResetEvent m_Disposed = new ManualResetEvent(false);
-        readonly Thread m_WorkerThread;
-        private ICommandSender m_CommandSender;
-
-        public TestProcess1()
-        {
-            m_WorkerThread = new Thread(SendCommands);
-        }
-
-        private void SendCommands(object obj)
-        {
-
-            int i = 0;
-            while (!m_Disposed.WaitOne(100))
-            {
-                m_CommandSender.SendCommand("command #" + i++, "local");
+                using (var engine = new CqrsEngine(
+                    _logFactory,
+                    messagingEngine,
+                    Register.DefaultEndpointResolver(new InMemoryEndpointResolver()),
+                    Register.Saga<TestSaga>("swift-cashout")
+                        .ListeningEvents(GetType()).From("lykke-wallet").On("lykke-wallet-events")))
+                {
+                    Assert.Throws<InvalidOperationException>(() => engine.Start(), "Engine must throw exception if Saga doesn't handle listened events");
+                }
             }
         }
 
-        public void Start(ICommandSender commandSender, IEventPublisher eventPublisher)
+        [Test]
+        public void UnhandledListenedCommandsTest()
         {
-            m_CommandSender = commandSender;
-            m_WorkerThread.Start();
-        }
-
-        public void Dispose()
-        {
-            m_Disposed.Set();
-            m_WorkerThread.Join();
+            using (var messagingEngine = new MessagingEngine(
+                _logFactory,
+                new TransportResolver(new Dictionary<string, TransportInfo>
+                {
+                    {"InMemory", new TransportInfo("none", "none", "none", null, "InMemory")}
+                })))
+            {
+                using (var engine = new CqrsEngine(
+                    _logFactory,
+                    messagingEngine,
+                    Register.DefaultEndpointResolver(new InMemoryEndpointResolver()),
+                    Register.BoundedContext("swift-cashout")
+                        .ListeningCommands(GetType()).On("lykke-wallet")))
+                {
+                    Assert.Throws<InvalidOperationException>(() => engine.Start(), "Engine must throw exception if command handler doesn't handle listened commands");
+                }
+            }
         }
     }
 }

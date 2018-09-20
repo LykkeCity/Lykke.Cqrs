@@ -10,7 +10,6 @@ using System.Runtime.CompilerServices;
 using Common.Log;
 using Lykke.Common.Log;
 using Lykke.Messaging.Contract;
-using ThreadState = System.Threading.ThreadState;
 
 namespace Lykke.Cqrs
 {
@@ -95,6 +94,19 @@ namespace Lykke.Cqrs
             }
         }
 
+        internal List<string> CheckHandledTypes(string boundedContext, Type[] eventTypes)
+        {
+            var notHandledEventTypeNames = new List<string>();
+            foreach (var eventType in eventTypes)
+            {
+                var eventOrigin = new EventOrigin(boundedContext, eventType);
+                if (!_batchHandlerInfos.ContainsKey(eventOrigin) && !_handlerInfos.ContainsKey(eventOrigin))
+                    notHandledEventTypeNames.Add(eventType.Name);
+            }
+
+            return notHandledEventTypeNames;
+        }
+
         public void Wire(string fromBoundedContext, object o, params OptionalParameterBase[] parameters)
         {
             //TODO: decide whet to pass as context here
@@ -124,6 +136,7 @@ namespace Lykke.Cqrs
                     ? new BatchManager(
                         _logFactory,
                         FailedEventRetryDelay,
+                        _enableEventsLogging,
                         batchSize,
                         applyTimeoutInSeconds * 1000,
                         beforeBatchApplyWrap,
@@ -131,6 +144,7 @@ namespace Lykke.Cqrs
                     : new BatchManager(
                         _log,
                         FailedEventRetryDelay,
+                        _enableEventsLogging,
                         batchSize,
                         applyTimeoutInSeconds * 1000,
                         beforeBatchApplyWrap,
@@ -213,8 +227,7 @@ namespace Lykke.Cqrs
                 }
                 else
                 {
-                    List<((string, Func<object, object, CommandHandlingResult>), BatchManager)> handlersList;
-                    if (!_handlerInfos.TryGetValue(key, out handlersList))
+                    if (!_handlerInfos.TryGetValue(key, out var handlersList))
                     {
                         handlersList = new List<((string, Func<object, object, CommandHandlingResult>), BatchManager)>();
                         _handlerInfos.Add(key, handlersList);

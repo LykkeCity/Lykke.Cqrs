@@ -49,19 +49,19 @@ namespace Lykke.Cqrs.Configuration.BoundedContext
         {
             if (handler == null)
                 throw new ArgumentNullException();
-            AddDescriptor(new CommandsHandlerDescriptor(handler));
+            AddDescriptorToStart(new CommandsHandlerDescriptor(handler));
             return this;
         }
 
         public IBoundedContextRegistration WithCommandsHandler<T>()
         {
-            AddDescriptor(new CommandsHandlerDescriptor(typeof(T)));
+            AddDescriptorToStart(new CommandsHandlerDescriptor(typeof(T)));
             return this;
         }
 
         public IBoundedContextRegistration WithCommandsHandlers(params Type[] handlers)
         {
-            AddDescriptor(new CommandsHandlerDescriptor(handlers));
+            AddDescriptorToStart(new CommandsHandlerDescriptor(handlers));
             return this;
         }
 
@@ -69,7 +69,7 @@ namespace Lykke.Cqrs.Configuration.BoundedContext
         {
             if (handler == null)
                 throw new ArgumentNullException();
-            AddDescriptor(new CommandsHandlerDescriptor(handler));
+            AddDescriptorToStart(new CommandsHandlerDescriptor(handler));
             return this;
         }
 
@@ -173,7 +173,7 @@ namespace Lykke.Cqrs.Configuration.BoundedContext
                 ? (Action<object,object>)null 
                 : (o,c) => afterBatchApply((TProjection)o,(TBatchContext)c);
 
-            AddDescriptor(
+            AddDescriptorToStart(
                 new ProjectionDescriptor(
                     projection,
                     fromBoundContext,
@@ -195,7 +195,7 @@ namespace Lykke.Cqrs.Configuration.BoundedContext
         {
             if (projection == null)
                 throw new ArgumentNullException(nameof(projection));
-            AddDescriptor(
+            AddDescriptorToStart(
                 new ProjectionDescriptor(
                     projection,
                     fromBoundContext,
@@ -217,7 +217,7 @@ namespace Lykke.Cqrs.Configuration.BoundedContext
         {
             if (projection == null)
                 throw new ArgumentNullException(nameof(projection));
-            AddDescriptor(
+            AddDescriptorToStart(
                 new ProjectionDescriptor(
                     projection,
                     fromBoundContext,

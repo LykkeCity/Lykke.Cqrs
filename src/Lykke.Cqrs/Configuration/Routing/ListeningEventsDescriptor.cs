@@ -5,7 +5,7 @@ using Lykke.Cqrs.Configuration.Saga;
 namespace Lykke.Cqrs.Configuration.Routing
 {
     public class ListeningEventsDescriptor<TRegistration> 
-        : ListeningRouteDescriptor<ListeningEventsDescriptor<TRegistration>,TRegistration>, IListeningEventsDescriptor<TRegistration>
+        : ListeningRouteDescriptor<ListeningEventsDescriptor<TRegistration>, TRegistration>, IListeningEventsDescriptor<TRegistration>
         where TRegistration : IRegistration
     {
         private string m_BoundedContext;
@@ -29,11 +29,11 @@ namespace Lykke.Cqrs.Configuration.Routing
             return new Type[0];
         }
 
-        public override void Create(IRouteMap routeMap, IDependencyResolver resolver)
+        public override void Create(Context context, IDependencyResolver resolver)
         {
             foreach (var type in m_Types)
             {
-                routeMap[Route].AddSubscribedEvent(
+                ((IRouteMap)context)[Route].AddSubscribedEvent(
                     type,
                     0,
                     m_BoundedContext,
@@ -43,9 +43,14 @@ namespace Lykke.Cqrs.Configuration.Routing
             }
         }
 
-        public override void Process(IRouteMap routeMap, CqrsEngine cqrsEngine)
+        public override void Process(Context context, CqrsEngine cqrsEngine)
         {
             EndpointResolver.SetFallbackResolver(cqrsEngine.EndpointResolver);
+
+            var notHandledEventTypeNames = context.EventDispatcher.CheckHandledTypes(m_BoundedContext, m_Types);
+            if (notHandledEventTypeNames.Count > 0)
+                throw new InvalidOperationException(
+                    $"Event types ({string.Join(", ", notHandledEventTypeNames)}) that are listened from context '{m_BoundedContext}' on route '{Route}' have no handler");
         }
     }
 }

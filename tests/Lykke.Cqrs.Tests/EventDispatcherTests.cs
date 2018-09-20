@@ -1,9 +1,6 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using System.Threading.Tasks;
-using JetBrains.Annotations;
 using Lykke.Common.Log;
 using Lykke.Messaging.Contract;
 using Lykke.Logs;
@@ -115,7 +112,7 @@ namespace Lykke.Cqrs.Tests
         public void AsyncEventHadlerTest()
         {
             var dispatcher = new EventDispatcher(_logFactory, "testBC");
-            var asyncHandler = new AsyncEventHandler(false);
+            var asyncHandler = new EventAsyncHandler(false);
             bool ack = false;
 
             dispatcher.Wire("testBC", asyncHandler);
@@ -129,7 +126,7 @@ namespace Lykke.Cqrs.Tests
         public void ExceptionForAsyncEventHadlerTest()
         {
             var dispatcher = new EventDispatcher(_logFactory, "testBC");
-            var handler = new AsyncEventHandler(true);
+            var handler = new EventAsyncHandler(true);
             int failedCount = 0;
 
             dispatcher.Wire("testBC", handler);
@@ -147,7 +144,7 @@ namespace Lykke.Cqrs.Tests
         public void AsyncResultEventHadlerTest()
         {
             var dispatcher = new EventDispatcher(_logFactory, "testBC");
-            var handler = new AsyncResultEventHandler(false);
+            var handler = new EventAsyncResultHandler(false);
             bool ack = false;
 
             dispatcher.Wire("testBC", handler);
@@ -161,7 +158,7 @@ namespace Lykke.Cqrs.Tests
         public void ExceptionForAsyncResultEventHadlerTest()
         {
             var dispatcher = new EventDispatcher(_logFactory, "testBC");
-            var handler = new AsyncResultEventHandler(true);
+            var handler = new EventAsyncResultHandler(true);
             int failedCount = 0;
 
             dispatcher.Wire("testBC", handler);
@@ -203,7 +200,7 @@ namespace Lykke.Cqrs.Tests
         public void BatchDispatchWithBatchHandlerOkTest()
         {
             var dispatcher = new EventDispatcher(_logFactory, "testBC");
-            var handler = new BatchHandler(false);
+            var handler = new EventBatchHandler(false);
             bool ack1 = false;
             bool ack2 = false;
             bool ack3 = false;
@@ -226,7 +223,7 @@ namespace Lykke.Cqrs.Tests
         public void BatchDispatchWithBatchHandlerFailTest()
         {
             var dispatcher = new EventDispatcher(_logFactory, "testBC");
-            var handler = new BatchHandler(true);
+            var handler = new EventBatchHandler(true);
             bool ack1 = true;
             bool ack2 = true;
             bool ack3 = true;
@@ -351,188 +348,6 @@ namespace Lykke.Cqrs.Tests
                 "Batch context was not the same for all evants in the batch");
             Assert.False(result.Item2,"failed event was acked");
             Assert.AreEqual(10, result.Item1,"failed event retry timeout was wrong");
-        }
-    }
-
-    internal class FakeBatchContext
-    {
-    }
-
-    internal class EventHandlerWithBatchSupport
-    {
-        public readonly List<Tuple<object, object>> HandledEvents = new List<Tuple<object, object>>();
-        private int _failCount;
-
-        internal EventHandlerWithBatchSupport(int failCount = 0)
-        {
-            _failCount = failCount;
-        }
-
-        [UsedImplicitly]
-        internal CommandHandlingResult Handle(DateTime e, FakeBatchContext batchContext)
-        {
-            HandledEvents.Add(Tuple.Create<object, object>(e, batchContext));
-            var retry = Interlocked.Decrement(ref _failCount) >= 0;
-            return new CommandHandlingResult { Retry = retry, RetryDelay = 10 };
-        }
-
-        internal FakeBatchContext OnBatchStart()
-        {
-            BatchStartReported = true;
-            LastCreatedBatchContext = new FakeBatchContext();
-            return LastCreatedBatchContext;
-        }
-
-        internal FakeBatchContext LastCreatedBatchContext { get; set; }
-        internal bool BatchStartReported { get; set; }
-        internal bool BatchFinishReported { get; set; }
-
-        internal void OnBatchFinish(FakeBatchContext context)
-        {
-            BatchFinishReported = true;
-        }
-    }
-
-    internal class EventHandler
-    {
-        private readonly bool _fail;
-
-        internal readonly List<object> HandledEvents = new List<object>();
-
-        internal bool FailOnce { get; set; }
-
-        internal EventHandler(bool fail = false)
-        {
-            _fail = fail;
-        }
-
-        [UsedImplicitly]
-        internal void Handle(string e)
-        {
-            HandledEvents.Add(e);
-            if (_fail || FailOnce)
-            {
-                FailOnce = false;
-                throw new Exception();
-            }
-        }
-
-        [UsedImplicitly]
-        internal void Handle(DateTime e)
-        {
-            HandledEvents.Add(e);
-            if (_fail || FailOnce)
-            {
-                FailOnce = false;
-                throw new Exception();
-            }
-        }
-
-        [UsedImplicitly]
-        internal void Handle(int e)
-        {
-            HandledEvents.Add(e);
-            if (_fail || FailOnce)
-            {
-                FailOnce = false;
-                throw new Exception();
-            }
-        }
-    }
-
-    internal class ResultEventHandler
-    {
-        private readonly bool _fail;
-        private readonly long _retryDelay;
-
-        internal readonly List<object> HandledEvents = new List<object>();
-
-        internal ResultEventHandler(bool fail = false, long retryDelay = 600)
-        {
-            _fail = fail;
-            _retryDelay = retryDelay;
-        }
-
-        [UsedImplicitly]
-        internal CommandHandlingResult Handle(string e)
-        {
-            HandledEvents.Add(e);
-            return new CommandHandlingResult { Retry = _fail, RetryDelay = _retryDelay };
-        }
-    }
-
-    internal class BatchHandler
-    {
-        private readonly bool _shouldThrow;
-
-        internal readonly List<object> HandledEvents = new List<object>();
-
-        internal BatchHandler(bool shouldThrow)
-        {
-            _shouldThrow = shouldThrow;
-        }
-
-        [UsedImplicitly]
-        internal CommandHandlingResult[] Handle(string[] e)
-        {
-            if (_shouldThrow)
-                throw new InvalidOperationException();
-
-            return e
-                .Select(i =>
-                {
-                    HandledEvents.Add(i);
-                    return CommandHandlingResult.Ok();
-                })
-                .ToArray();
-        }
-    }
-
-    internal class AsyncEventHandler
-    {
-        private readonly bool _shouldThrow;
-
-        internal readonly List<object> HandledEvents = new List<object>();
-
-        internal AsyncEventHandler(bool shouldThrow)
-        {
-            _shouldThrow = shouldThrow;
-        }
-
-        [UsedImplicitly]
-        internal async Task Handle(string evt)
-        {
-            if (_shouldThrow)
-                throw new InvalidOperationException();
-
-            await Task.Delay(1);
-
-            HandledEvents.Add(evt);
-        }
-    }
-
-    internal class AsyncResultEventHandler
-    {
-        private readonly bool _shouldThrow;
-
-        internal readonly List<object> HandledEvents = new List<object>();
-
-        internal AsyncResultEventHandler(bool shouldThrow)
-        {
-            _shouldThrow = shouldThrow;
-        }
-
-        [UsedImplicitly]
-        internal async Task<CommandHandlingResult> Handle(string evt)
-        {
-            if (_shouldThrow)
-                throw new InvalidOperationException();
-
-            await Task.Delay(1);
-
-            HandledEvents.Add(evt);
-
-            return CommandHandlingResult.Ok();
         }
     }
 }

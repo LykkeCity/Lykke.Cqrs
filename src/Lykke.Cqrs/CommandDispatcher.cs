@@ -96,6 +96,18 @@ namespace Lykke.Cqrs
             }
         }
 
+        internal List<string> CheckHandledTypes(Type[] eventTypes)
+        {
+            var notHandledCommandTypeNames = new List<string>();
+            foreach (var eventType in eventTypes)
+            {
+                if (!_handlers.ContainsKey(eventType))
+                    notHandledCommandTypeNames.Add(eventType.Name);
+            }
+
+            return notHandledCommandTypeNames;
+        }
+
         private Expression InvokeFunc(object o)
         {
             return Expression.Call(Expression.Constant(o), o.GetType().GetMethod("Invoke"));
