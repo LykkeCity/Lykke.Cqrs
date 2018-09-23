@@ -96,16 +96,16 @@ namespace Lykke.Cqrs
             }
         }
 
-        internal List<string> CheckHandledTypes(Type[] eventTypes)
+        internal List<Type> GetUnhandledCommandTypes(Type[] eventTypes)
         {
-            var notHandledCommandTypeNames = new List<string>();
+            var notHandledCommandTypes = new List<Type>();
             foreach (var eventType in eventTypes)
             {
                 if (!_handlers.ContainsKey(eventType))
-                    notHandledCommandTypeNames.Add(eventType.Name);
+                    notHandledCommandTypes.Add(eventType);
             }
 
-            return notHandledCommandTypeNames;
+            return notHandledCommandTypes;
         }
 
         private Expression InvokeFunc(object o)

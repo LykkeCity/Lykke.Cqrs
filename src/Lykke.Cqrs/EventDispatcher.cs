@@ -94,14 +94,14 @@ namespace Lykke.Cqrs
             }
         }
 
-        internal List<string> CheckHandledTypes(string boundedContext, Type[] eventTypes)
+        internal List<Type> GetUnhandledEventTypes(string boundedContext, Type[] eventTypes)
         {
-            var notHandledEventTypeNames = new List<string>();
+            var notHandledEventTypeNames = new List<Type>();
             foreach (var eventType in eventTypes)
             {
                 var eventOrigin = new EventOrigin(boundedContext, eventType);
                 if (!_batchHandlerInfos.ContainsKey(eventOrigin) && !_handlerInfos.ContainsKey(eventOrigin))
-                    notHandledEventTypeNames.Add(eventType.Name);
+                    notHandledEventTypeNames.Add(eventType);
             }
 
             return notHandledEventTypeNames;

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Lykke.Cqrs.Configuration.Routing
 {
@@ -49,10 +50,10 @@ namespace Lykke.Cqrs.Configuration.Routing
         {
             EndpointResolver.SetFallbackResolver(cqrsEngine.EndpointResolver);
 
-            var notHandledCommandTypeNames = context.CommandDispatcher.CheckHandledTypes(Types);
-            if (notHandledCommandTypeNames.Count > 0)
+            var notHandledCommandTypes = context.CommandDispatcher.GetUnhandledCommandTypes(Types);
+            if (notHandledCommandTypes.Count > 0)
                 throw new InvalidOperationException(
-                    $"Command types ({string.Join(", ", notHandledCommandTypeNames)}) that are listened on route '{Route}' have no handler");
+                    $"Command types ({string.Join(", ", notHandledCommandTypes.Select(t => t.Name))}) that are listened on route '{Route}' have no handler");
         }
     }
 }

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Lykke.Cqrs.Configuration.Saga;
 
 namespace Lykke.Cqrs.Configuration.Routing
@@ -47,10 +48,10 @@ namespace Lykke.Cqrs.Configuration.Routing
         {
             EndpointResolver.SetFallbackResolver(cqrsEngine.EndpointResolver);
 
-            var notHandledEventTypeNames = context.EventDispatcher.CheckHandledTypes(m_BoundedContext, m_Types);
-            if (notHandledEventTypeNames.Count > 0)
+            var notHandledEventTypes = context.EventDispatcher.GetUnhandledEventTypes(m_BoundedContext, m_Types);
+            if (notHandledEventTypes.Count > 0)
                 throw new InvalidOperationException(
-                    $"Event types ({string.Join(", ", notHandledEventTypeNames)}) that are listened from context '{m_BoundedContext}' on route '{Route}' have no handler");
+                    $"Event types ({string.Join(", ", notHandledEventTypes.Select(t => t.Name))}) that are listened from context '{m_BoundedContext}' on route '{Route}' have no handler");
         }
     }
 }
