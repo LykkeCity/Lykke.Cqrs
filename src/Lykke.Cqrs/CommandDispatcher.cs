@@ -96,13 +96,13 @@ namespace Lykke.Cqrs
             }
         }
 
-        internal List<Type> GetUnhandledCommandTypes(Type[] eventTypes)
+        internal List<Type> GetUnhandledCommandTypes(Type[] commandTypes)
         {
             var notHandledCommandTypes = new List<Type>();
-            foreach (var eventType in eventTypes)
+            foreach (var commandType in commandTypes)
             {
-                if (!_handlers.ContainsKey(eventType))
-                    notHandledCommandTypes.Add(eventType);
+                if (!_handlers.ContainsKey(commandType))
+                    notHandledCommandTypes.Add(commandType);
             }
 
             return notHandledCommandTypes;
