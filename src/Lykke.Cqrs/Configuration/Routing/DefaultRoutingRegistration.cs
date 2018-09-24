@@ -2,7 +2,7 @@ using System;
 
 namespace Lykke.Cqrs.Configuration.Routing
 {
-    public class DefaultRoutingRegistration : RegistrationBase<IDefaultRoutingRegistration,IRouteMap>, IDefaultRoutingRegistration
+    public class DefaultRoutingRegistration : RegistrationBase<IDefaultRoutingRegistration, IRouteMap>, IDefaultRoutingRegistration
     {
         protected override IRouteMap GetSubject(CqrsEngine cqrsEngine)
         {

@@ -40,5 +40,12 @@ namespace Lykke.Cqrs.Configuration
             m_Descriptors.Add(descriptor);
             return descriptor;
         }
+
+        protected T AddHandlerDescriptor<T>(T descriptor) where T : IDescriptor<TSubject>
+        {
+            m_Dependencies = m_Dependencies.Concat(descriptor.GetDependencies()).Distinct().ToArray();
+            m_Descriptors.Insert(0, descriptor);
+            return descriptor;
+        }
     }
 }

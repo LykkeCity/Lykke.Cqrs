@@ -6,7 +6,7 @@ namespace Lykke.Cqrs.Configuration.Routing
     /// Fluent API interface for route name specification.
     /// </summary>
     [PublicAPI]
-    public interface IListeningRouteDescriptor<out T> : IDescriptor<IRouteMap>
+    public interface IListeningRouteDescriptor<out T> : IDescriptor<Context>
     {
         /// <summary>
         /// Specifies route name for messages listening.

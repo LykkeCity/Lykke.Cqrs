@@ -45,7 +45,7 @@ namespace Lykke.Cqrs
         }
 
         [Obsolete]
-        private BatchManager(
+        internal BatchManager(
             ILog log,
             long failedEventRetryDelay,
             bool enableEventsLogging,
@@ -81,7 +81,7 @@ namespace Lykke.Cqrs
         {
         }
 
-        private BatchManager(
+        internal BatchManager(
             ILogFactory logFactory,
             long failedEventRetryDelay,
             bool enableEventsLogging,
