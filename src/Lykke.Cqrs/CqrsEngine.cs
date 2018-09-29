@@ -126,6 +126,11 @@ namespace Lykke.Cqrs
             Contexts = new List<Context>();
             DefaultRouteMap = new RouteMap("default");
             EnableInputMessagesLogging = enableInputMessagesLogging;
+
+            foreach (var registration in _registrations)
+            {
+                registration.Create(this);
+            }
         }
 
         #endregion
