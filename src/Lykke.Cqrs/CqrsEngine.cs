@@ -126,6 +126,11 @@ namespace Lykke.Cqrs
             Contexts = new List<Context>();
             DefaultRouteMap = new RouteMap("default");
             EnableInputMessagesLogging = enableInputMessagesLogging;
+
+            foreach (var registration in _registrations)
+            {
+                registration.Create(this);
+            }
         }
 
         #endregion
@@ -216,6 +221,11 @@ namespace Lykke.Cqrs
             Contexts = new List<Context>();
             DefaultRouteMap = new RouteMap("default");
             EnableInputMessagesLogging = enableInputMessagesLogging;
+
+            foreach (var registration in _registrations)
+            {
+                registration.Create(this);
+            }
         }
 
         internal CommandDispatcher CreateCommandsDispatcher(string name, long failedCommandRetryDelay)
@@ -249,10 +259,6 @@ namespace Lykke.Cqrs
 
         public void Start()
         {
-            foreach (var registration in _registrations)
-            {
-                registration.Create(this);
-            }
             foreach (var registration in _registrations)
             {
                 registration.Process(this);
