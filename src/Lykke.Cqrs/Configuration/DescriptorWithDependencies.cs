@@ -27,7 +27,7 @@ namespace Lykke.Cqrs.Configuration
 
         public void Create(TSubject subject, IDependencyResolver resolver)
         {
-            ResolvedDependencies = m_ResolveDependedncies(resolver.GetService);
+            ResolvedDependencies = m_ResolveDependedncies(resolver.GetService).ToList();
             Create(subject);
         }
 
