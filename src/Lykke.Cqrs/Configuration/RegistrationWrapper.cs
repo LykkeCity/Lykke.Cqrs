@@ -8,16 +8,13 @@ namespace Lykke.Cqrs.Configuration
     {
         private readonly T m_Registration;
 
-        T IRegistrationWrapper<T>.Registration { get { return m_Registration; } }
+        T IRegistrationWrapper<T>.Registration => m_Registration;
+
+        IEnumerable<Type> IRegistration.Dependencies => m_Registration.Dependencies;
 
         protected RegistrationWrapper(T registration)
         {
             m_Registration = registration;
-        }
-
-        IEnumerable<Type> IRegistration.Dependencies
-        {
-            get { return m_Registration.Dependencies; }
         }
 
         void IRegistration.Create(CqrsEngine cqrsEngine)

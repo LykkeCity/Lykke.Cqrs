@@ -3,7 +3,7 @@ using Lykke.Cqrs.Configuration.Routing;
 
 namespace Lykke.Cqrs.Configuration.BoundedContext
 {
-    public class BoundedContextRegistration : ContextRegistrationBase<IBoundedContextRegistration>, IBoundedContextRegistration
+    internal class BoundedContextRegistration : ContextRegistrationBase<IBoundedContextRegistration>, IBoundedContextRegistration
     {
         public long FailedCommandRetryDelayInternal { get; set; }
 

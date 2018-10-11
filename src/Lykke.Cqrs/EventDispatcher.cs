@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using System.Runtime.CompilerServices;
 using Common.Log;
 using Lykke.Common.Log;
+using Lykke.Cqrs.Middleware;
 using Lykke.Messaging.Contract;
 
 namespace Lykke.Cqrs
@@ -19,9 +20,10 @@ namespace Lykke.Cqrs
 
         private readonly Dictionary<EventOrigin, List<((string, Func<object[], object, CommandHandlingResult[]>), BatchManager)>> _batchHandlerInfos =
             new Dictionary<EventOrigin, List<((string, Func<object[], object, CommandHandlingResult[]>), BatchManager)>>();
-        private readonly Dictionary<EventOrigin, List<((string, Func<object, object, CommandHandlingResult>), BatchManager)>> _handlerInfos =
-            new Dictionary<EventOrigin, List<((string, Func<object, object, CommandHandlingResult>), BatchManager)>>();
+        private readonly Dictionary<EventOrigin, List<(EventHandlerInfo, BatchManager)>> _handlerInfos =
+            new Dictionary<EventOrigin, List<(EventHandlerInfo, BatchManager)>>();
         private readonly ILog _log;
+        private readonly EventInterceptorsProcessor _eventInterceptorsProcessor;
         private readonly string _boundedContext;
         private readonly ManualResetEvent _stop = new ManualResetEvent(false);
         private readonly Thread _applyBatchesThread;
@@ -34,9 +36,15 @@ namespace Lykke.Cqrs
         public EventDispatcher(
             ILog log,
             string boundedContext,
+            EventInterceptorsProcessor eventInterceptorsProcessor,
             bool enableEventsLogging = true)
         {
-            _defaultBatchManager = new BatchManager(log, FailedEventRetryDelay);
+            _eventInterceptorsProcessor = eventInterceptorsProcessor ?? new EventInterceptorsProcessor();
+            _defaultBatchManager = new BatchManager(
+                log,
+                FailedEventRetryDelay,
+                enableEventsLogging,
+                _eventInterceptorsProcessor);
             _log = log;
             _boundedContext = boundedContext;
             _enableEventsLogging = enableEventsLogging;
@@ -59,9 +67,15 @@ namespace Lykke.Cqrs
         public EventDispatcher(
             ILogFactory logFactory,
             string boundedContext,
+            EventInterceptorsProcessor eventInterceptorsProcessor = null,
             bool enableEventsLogging = true)
         {
-            _defaultBatchManager = new BatchManager(logFactory, FailedEventRetryDelay);
+            _eventInterceptorsProcessor = eventInterceptorsProcessor ?? new EventInterceptorsProcessor();
+            _defaultBatchManager = new BatchManager(
+                logFactory,
+                FailedEventRetryDelay,
+                enableEventsLogging,
+                _eventInterceptorsProcessor);
             _log = logFactory.CreateLog(this);
             _logFactory = logFactory;
             _boundedContext = boundedContext;
@@ -107,7 +121,7 @@ namespace Lykke.Cqrs
             return notHandledEventTypeNames;
         }
 
-        public void Wire(string fromBoundedContext, object o, params OptionalParameterBase[] parameters)
+        internal void Wire(string fromBoundedContext, object o, params OptionalParameterBase[] parameters)
         {
             //TODO: decide whet to pass as context here
             Wire(
@@ -118,7 +132,7 @@ namespace Lykke.Cqrs
                 parameters);
         }
 
-        public void Wire(
+        internal void Wire(
             string fromBoundedContext,
             object o,
             int batchSize,
@@ -137,6 +151,7 @@ namespace Lykke.Cqrs
                         _logFactory,
                         FailedEventRetryDelay,
                         _enableEventsLogging,
+                        _eventInterceptorsProcessor,
                         batchSize,
                         applyTimeoutInSeconds * 1000,
                         beforeBatchApplyWrap,
@@ -145,6 +160,7 @@ namespace Lykke.Cqrs
                         _log,
                         FailedEventRetryDelay,
                         _enableEventsLogging,
+                        _eventInterceptorsProcessor,
                         batchSize,
                         applyTimeoutInSeconds * 1000,
                         beforeBatchApplyWrap,
@@ -229,16 +245,18 @@ namespace Lykke.Cqrs
                 {
                     if (!_handlerInfos.TryGetValue(key, out var handlersList))
                     {
-                        handlersList = new List<((string, Func<object, object, CommandHandlingResult>), BatchManager)>();
+                        handlersList = new List<(EventHandlerInfo, BatchManager)>();
                         _handlerInfos.Add(key, handlersList);
                     }
                     var handler = CreateHandler(
                         eventType,
                         o,
-                        method.callParameters.Select(p => p.optionalParameter),
+                        method.callParameters.Select(p => p.optionalParameter).ToArray(),
                         method.returnType,
                         batchContextParameter);
-                    handlersList.Add(((o.GetType().Name, handler), batchManager ?? _defaultBatchManager));
+                    var commandSender = (ICommandSender)parameters?.FirstOrDefault(p => p.Type == typeof(ICommandSender))?.Value;
+                    handlersList.Add(
+                        (new EventHandlerInfo(o, commandSender, handler), batchManager ?? _defaultBatchManager));
                 }
             }
         }
@@ -279,7 +297,7 @@ namespace Lykke.Cqrs
             return lambda.Compile();
         }
 
-        private Func<object, object, CommandHandlingResult> CreateHandler(
+        private Func<object, ICommandSender, object, CommandHandlingResult> CreateHandler(
             Type eventType,
             object o,
             IEnumerable<OptionalParameterBase> optionalParameters,
@@ -290,8 +308,10 @@ namespace Lykke.Cqrs
             var returnLabel = Expression.Label(returnTarget, Expression.Constant(new CommandHandlingResult()));
 
             var @event = Expression.Parameter(typeof(object));
+            var commandSenderParam = Expression.Parameter(typeof(ICommandSender));
+
             var handleParams = new Expression[] { Expression.Convert(@event, eventType) }
-                .Concat(optionalParameters.Select(p => p.ValueExpression))
+                .Concat(optionalParameters.Select(p => p.Type == typeof(ICommandSender) ? commandSenderParam : p.ValueExpression))
                 .ToArray();
 
             var handleCall = Expression.Call(Expression.Constant(o), "Handle", null, handleParams);
@@ -321,7 +341,11 @@ namespace Lykke.Cqrs
                Expression.Return(returnTarget, resultCall),
                returnLabel);
 
-            var lambda = (Expression<Func<object, object, CommandHandlingResult>>)Expression.Lambda(create, @event, batchContext.Parameter);
+            var lambda = (Expression<Func<object, ICommandSender, object, CommandHandlingResult>>)Expression.Lambda(
+                create,
+                @event,
+                commandSenderParam,
+                batchContext.Parameter);
 
             return lambda.Compile();
         }

@@ -10,6 +10,7 @@ using Lykke.Common.Log;
 using Lykke.Messaging.Configuration;
 using Lykke.Messaging.Contract;
 using Lykke.Cqrs.Configuration;
+using Lykke.Cqrs.Middleware;
 using Lykke.Cqrs.Utils;
 
 namespace Lykke.Cqrs
@@ -24,9 +25,11 @@ namespace Lykke.Cqrs
         private readonly ILogFactory _logFactory;
 
         protected IMessagingEngine MessagingEngine { get; }
+
         internal IEndpointResolver EndpointResolver { get; set; }
         internal List<Context> Contexts { get; }
-
+        internal CommandInterceptorsProcessor CommandInterceptorsProcessor { get; }
+        internal EventInterceptorsProcessor EventInterceptorsProcessor { get; }
         internal IDependencyResolver DependencyResolver { get; }
         internal bool EnableInputMessagesLogging { get; }
 
@@ -126,6 +129,8 @@ namespace Lykke.Cqrs
             Contexts = new List<Context>();
             DefaultRouteMap = new RouteMap("default");
             EnableInputMessagesLogging = enableInputMessagesLogging;
+            CommandInterceptorsProcessor = new CommandInterceptorsProcessor();
+            EventInterceptorsProcessor = new EventInterceptorsProcessor();
 
             foreach (var registration in _registrations)
             {
@@ -221,6 +226,8 @@ namespace Lykke.Cqrs
             Contexts = new List<Context>();
             DefaultRouteMap = new RouteMap("default");
             EnableInputMessagesLogging = enableInputMessagesLogging;
+            CommandInterceptorsProcessor = new CommandInterceptorsProcessor();
+            EventInterceptorsProcessor = new EventInterceptorsProcessor();
 
             foreach (var registration in _registrations)
             {
@@ -234,11 +241,13 @@ namespace Lykke.Cqrs
                 ? new CommandDispatcher(
                     _logFactory,
                     name,
+                    CommandInterceptorsProcessor,
                     EnableInputMessagesLogging,
                     failedCommandRetryDelay)
                 : new CommandDispatcher(
                     Log,
                     name,
+                    CommandInterceptorsProcessor,
                     EnableInputMessagesLogging,
                     failedCommandRetryDelay);
         }
@@ -249,12 +258,13 @@ namespace Lykke.Cqrs
                 ? new EventDispatcher(
                     _logFactory,
                     name,
+                    EventInterceptorsProcessor,
                     EnableInputMessagesLogging)
                 : new EventDispatcher(
                     Log,
                     name,
+                    EventInterceptorsProcessor,
                     EnableInputMessagesLogging);
-
         }
 
         public void Start()

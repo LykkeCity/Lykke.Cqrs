@@ -1,15 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using JetBrains.Annotations;
 
 namespace Lykke.Cqrs.Configuration.Routing
 {
     /// <summary>
     /// Default endpoint resolver registration class.
     /// </summary>
-    [PublicAPI]
-    public class DefaultEndpointResolverRegistration : IRegistration, IHideObjectMembers
+    internal class DefaultEndpointResolverRegistration : IRegistration, IHideObjectMembers
     {
         private IEndpointResolver m_Resolver;
 
