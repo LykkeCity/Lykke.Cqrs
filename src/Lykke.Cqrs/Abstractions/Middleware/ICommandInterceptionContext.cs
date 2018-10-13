@@ -1,5 +1,4 @@
-﻿using System;
-using JetBrains.Annotations;
+﻿using JetBrains.Annotations;
 using Lykke.Cqrs.Abstractions.Middleware;
 
 namespace Lykke.Cqrs.Middleware
@@ -19,7 +18,7 @@ namespace Lykke.Cqrs.Middleware
         /// <summary><see cref="IEventPublisher"/> implementation.</summary>
         IEventPublisher EventPublisher { get; set; }
 
-        /// <summary>Next middleware resolver.</summary>
-        Func<ICommandInterceptor, ICommandInterceptor> NextResolver { get; }
+        /// <summary>Next middleware.</summary>
+        ICommandInterceptor Next { get; }
     }
 }

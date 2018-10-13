@@ -32,6 +32,7 @@ namespace Lykke.Cqrs.Tests
         public void OneSimpleEventInterceptorTest()
         {
             var simpleEventInterceptor = new EventSimpleInterceptor();
+            TestSaga.Handled = false;
 
             using (var messagingEngine = new MessagingEngine(
                 _logFactory,
@@ -53,8 +54,9 @@ namespace Lykke.Cqrs.Tests
                     Thread.Sleep(1000);
 
                     Assert.True(simpleEventInterceptor.Intercepted);
+                    Assert.NotNull(simpleEventInterceptor.InterceptionTimestamp);
                     Assert.NotNull(simpleEventInterceptor.Next);
-                    Assert.AreNotEqual(simpleEventInterceptor.Next, simpleEventInterceptor);
+                    Assert.True(TestSaga.Handled);
                 }
             }
         }
@@ -64,6 +66,7 @@ namespace Lykke.Cqrs.Tests
         {
             var simpleEventInterceptorOne = new EventSimpleInterceptor();
             var simpleEventInterceptorTwo = new EventSimpleInterceptor();
+            TestSaga.Handled = false;
 
             using (var messagingEngine = new MessagingEngine(
                 _logFactory,
@@ -87,10 +90,13 @@ namespace Lykke.Cqrs.Tests
 
                     Assert.True(simpleEventInterceptorOne.Intercepted);
                     Assert.True(simpleEventInterceptorTwo.Intercepted);
-                    Assert.AreEqual(simpleEventInterceptorOne.Next, simpleEventInterceptorTwo);
+                    Assert.NotNull(simpleEventInterceptorOne.InterceptionTimestamp);
+                    Assert.NotNull(simpleEventInterceptorTwo.InterceptionTimestamp);
+                    Assert.True(simpleEventInterceptorOne.InterceptionTimestamp < simpleEventInterceptorTwo.InterceptionTimestamp);
+                    Assert.NotNull(simpleEventInterceptorOne.Next);
                     Assert.NotNull(simpleEventInterceptorTwo.Next);
-                    Assert.AreNotEqual(simpleEventInterceptorTwo.Next, simpleEventInterceptorOne);
-                    Assert.AreNotEqual(simpleEventInterceptorTwo.Next, simpleEventInterceptorTwo);
+                    Assert.AreNotEqual(simpleEventInterceptorOne.Next, simpleEventInterceptorTwo.Next);
+                    Assert.True(TestSaga.Handled);
                 }
             }
         }
@@ -99,6 +105,7 @@ namespace Lykke.Cqrs.Tests
         public void OneSimpleCommandInterceptorTest()
         {
             var commandSimpleInterceptor = new CommandSimpleInterceptor();
+            var commandsHandler = new CommandsHandler();
 
             using (var messagingEngine = new MessagingEngine(
                 _logFactory,
@@ -114,15 +121,16 @@ namespace Lykke.Cqrs.Tests
                     Register.CommandInterceptors(commandSimpleInterceptor),
                     Register.BoundedContext("swift-cashout")
                         .ListeningCommands(typeof(int)).On("lykke-wallet-events")
-                        .WithCommandsHandler<CommandsHandler>()))
+                        .WithCommandsHandler(commandsHandler)))
                 {
                     engine.Start();
                     messagingEngine.Send(1, new Endpoint("InMemory", "lykke-wallet-events", serializationFormat: SerializationFormat.Json));
                     Thread.Sleep(1000);
 
                     Assert.True(commandSimpleInterceptor.Intercepted);
+                    Assert.NotNull(commandSimpleInterceptor.InterceptionTimestamp);
                     Assert.NotNull(commandSimpleInterceptor.Next);
-                    Assert.AreNotEqual(commandSimpleInterceptor.Next, commandSimpleInterceptor);
+                    Assert.True(commandsHandler.HandledCommands.Count > 0);
                 }
             }
         }
@@ -132,6 +140,7 @@ namespace Lykke.Cqrs.Tests
         {
             var commandSimpleInterceptorOne = new CommandSimpleInterceptor();
             var commandSimpleInterceptorTwo = new CommandSimpleInterceptor();
+            var commandsHandler = new CommandsHandler();
 
             using (var messagingEngine = new MessagingEngine(
                 _logFactory,
@@ -147,7 +156,7 @@ namespace Lykke.Cqrs.Tests
                     Register.CommandInterceptors(commandSimpleInterceptorOne, commandSimpleInterceptorTwo),
                     Register.BoundedContext("swift-cashout")
                         .ListeningCommands(typeof(int)).On("lykke-wallet-events")
-                        .WithCommandsHandler<CommandsHandler>()))
+                        .WithCommandsHandler(commandsHandler)))
                 {
                     engine.Start();
                     messagingEngine.Send(1, new Endpoint("InMemory", "lykke-wallet-events", serializationFormat: SerializationFormat.Json));
@@ -155,10 +164,13 @@ namespace Lykke.Cqrs.Tests
 
                     Assert.True(commandSimpleInterceptorOne.Intercepted);
                     Assert.True(commandSimpleInterceptorTwo.Intercepted);
-                    Assert.AreEqual(commandSimpleInterceptorOne.Next, commandSimpleInterceptorTwo);
+                    Assert.NotNull(commandSimpleInterceptorOne.InterceptionTimestamp);
+                    Assert.NotNull(commandSimpleInterceptorTwo.InterceptionTimestamp);
+                    Assert.True(commandSimpleInterceptorOne.InterceptionTimestamp < commandSimpleInterceptorTwo.InterceptionTimestamp);
+                    Assert.NotNull(commandSimpleInterceptorOne.Next);
                     Assert.NotNull(commandSimpleInterceptorTwo.Next);
-                    Assert.AreNotEqual(commandSimpleInterceptorTwo.Next, commandSimpleInterceptorOne);
-                    Assert.AreNotEqual(commandSimpleInterceptorTwo.Next, commandSimpleInterceptorTwo);
+                    Assert.AreNotEqual(commandSimpleInterceptorOne.Next, commandSimpleInterceptorTwo.Next);
+                    Assert.True(commandsHandler.HandledCommands.Count > 0);
                 }
             }
         }

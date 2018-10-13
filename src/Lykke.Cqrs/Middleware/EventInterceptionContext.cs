@@ -1,5 +1,4 @@
-﻿using System;
-using Lykke.Cqrs.Abstractions.Middleware;
+﻿using Lykke.Cqrs.Abstractions.Middleware;
 
 namespace Lykke.Cqrs.Middleware
 {
@@ -8,6 +7,21 @@ namespace Lykke.Cqrs.Middleware
         public object Event { get; set; }
         public object HandlerObject { get; internal set; }
         public ICommandSender CommandSender { get; set; }
-        public Func<IEventInterceptor, IEventInterceptor> NextResolver { get; internal set; }
+        public IEventInterceptor Next { get; internal set; }
+
+        internal EventInterceptorsProcessor InterceptorsProcessor { get; set; }
+        internal EventActualHandlerInterceptor ActualHandlerInterceptor { get; set; }
+
+        internal EventInterceptionContext CopyForNext()
+        {
+            return new EventInterceptionContext
+            {
+                Event = Event,
+                HandlerObject = HandlerObject,
+                CommandSender = CommandSender,
+                InterceptorsProcessor = InterceptorsProcessor,
+                ActualHandlerInterceptor = ActualHandlerInterceptor,
+            };
+        }
     }
 }

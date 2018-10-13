@@ -29,22 +29,26 @@ namespace Lykke.Cqrs.Middleware
                 Event = @event,
                 HandlerObject = handlerObject,
                 CommandSender = commandSender,
-                NextResolver = i => ResolveNext(i, actualHandlerInterceptor),
+                InterceptorsProcessor = this,
+                ActualHandlerInterceptor = actualHandlerInterceptor,
             };
+            context.Next = new EventInterceptorInvokationDecorator(context, 0);
 
             return interceptor.InterceptAsync(context);
         }
 
-        private IEventInterceptor ResolveNext(IEventInterceptor current, IEventInterceptor actualHandlerInterceptor)
+        internal IEventInterceptor ResolveNext(int currentInterceptorIndex, IEventInterceptor actualHandlerInterceptor)
         {
-            int currentIndex = _eventInterceptors.IndexOf(current);
-            if (currentIndex == -1)
-                throw new InvalidOperationException($"Event interceptor of type {current.GetType().Name} is missing in Cqrs engine registrations.");
+            if (currentInterceptorIndex < 0)
+                throw new IndexOutOfRangeException($"{nameof(currentInterceptorIndex)} must be non-negative");
 
-            if (currentIndex == _eventInterceptors.Count - 1)
+            if (currentInterceptorIndex >= _eventInterceptors.Count)
+                return null;
+
+            if (currentInterceptorIndex == _eventInterceptors.Count - 1)
                 return actualHandlerInterceptor;
 
-            return _eventInterceptors[currentIndex + 1];
+            return _eventInterceptors[currentInterceptorIndex + 1];
         }
     }
 }

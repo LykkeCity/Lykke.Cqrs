@@ -4,10 +4,11 @@ using System.Threading;
 
 namespace Lykke.Cqrs.Tests
 {
-    public class TestSaga
+    internal class TestSaga
     {
-        public static List<string> Messages = new List<string>();
-        public static ManualResetEvent Complete = new ManualResetEvent(false);
+        internal static List<string> Messages = new List<string>();
+        internal static ManualResetEvent Complete = new ManualResetEvent(false);
+        internal static bool Handled { get; set; }
 
         private void Handle(CashOutCreatedEvent @event, ICommandSender sender, string boundedContext)
         {
@@ -21,6 +22,7 @@ namespace Lykke.Cqrs.Tests
 
         private void Handle(int @event)
         {
+            Handled = true;
         }
     }
 }
