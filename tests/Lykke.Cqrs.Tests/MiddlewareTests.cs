@@ -32,7 +32,6 @@ namespace Lykke.Cqrs.Tests
         public void OneSimpleEventInterceptorTest()
         {
             var simpleEventInterceptor = new EventSimpleInterceptor();
-            TestSaga.Handled = false;
 
             using (var messagingEngine = new MessagingEngine(
                 _logFactory,
@@ -46,17 +45,17 @@ namespace Lykke.Cqrs.Tests
                     messagingEngine,
                     Register.DefaultEndpointResolver(new InMemoryEndpointResolver()),
                     Register.EventInterceptors(simpleEventInterceptor),
-                    Register.Saga<TestSaga>("swift-cashout")
-                        .ListeningEvents(typeof(int)).From("lykke-wallet").On("lykke-wallet-events")))
+                    Register.Saga<TestSaga>("test1")
+                        .ListeningEvents(typeof(string)).From("lykke-wallet").On("lykke-wallet-events")))
                 {
                     engine.Start();
-                    messagingEngine.Send(1, new Endpoint("InMemory", "lykke-wallet-events", serializationFormat: SerializationFormat.Json));
+                    messagingEngine.Send("1", new Endpoint("InMemory", "lykke-wallet-events", serializationFormat: SerializationFormat.Json));
                     Thread.Sleep(1000);
 
                     Assert.True(simpleEventInterceptor.Intercepted);
                     Assert.NotNull(simpleEventInterceptor.InterceptionTimestamp);
                     Assert.NotNull(simpleEventInterceptor.Next);
-                    Assert.True(TestSaga.Handled);
+                    Assert.True(TestSaga.Messages.Contains("1"));
                 }
             }
         }
@@ -66,7 +65,6 @@ namespace Lykke.Cqrs.Tests
         {
             var simpleEventInterceptorOne = new EventSimpleInterceptor();
             var simpleEventInterceptorTwo = new EventSimpleInterceptor();
-            TestSaga.Handled = false;
 
             using (var messagingEngine = new MessagingEngine(
                 _logFactory,
@@ -81,11 +79,11 @@ namespace Lykke.Cqrs.Tests
                     Register.DefaultEndpointResolver(new InMemoryEndpointResolver()),
                     Register.EventInterceptors(simpleEventInterceptorOne),
                     Register.EventInterceptors(simpleEventInterceptorTwo),
-                    Register.Saga<TestSaga>("swift-cashout")
-                        .ListeningEvents(typeof(int)).From("lykke-wallet").On("lykke-wallet-events")))
+                    Register.Saga<TestSaga>("test2")
+                        .ListeningEvents(typeof(string)).From("lykke-wallet").On("lykke-wallet-events")))
                 {
                     engine.Start();
-                    messagingEngine.Send(1, new Endpoint("InMemory", "lykke-wallet-events", serializationFormat: SerializationFormat.Json));
+                    messagingEngine.Send("2", new Endpoint("InMemory", "lykke-wallet-events", serializationFormat: SerializationFormat.Json));
                     Thread.Sleep(1000);
 
                     Assert.True(simpleEventInterceptorOne.Intercepted);
@@ -96,7 +94,7 @@ namespace Lykke.Cqrs.Tests
                     Assert.NotNull(simpleEventInterceptorOne.Next);
                     Assert.NotNull(simpleEventInterceptorTwo.Next);
                     Assert.AreNotEqual(simpleEventInterceptorOne.Next, simpleEventInterceptorTwo.Next);
-                    Assert.True(TestSaga.Handled);
+                    Assert.True(TestSaga.Messages.Contains("2"));
                 }
             }
         }
@@ -119,7 +117,7 @@ namespace Lykke.Cqrs.Tests
                     messagingEngine,
                     Register.DefaultEndpointResolver(new InMemoryEndpointResolver()),
                     Register.CommandInterceptors(commandSimpleInterceptor),
-                    Register.BoundedContext("swift-cashout")
+                    Register.BoundedContext("test1")
                         .ListeningCommands(typeof(int)).On("lykke-wallet-events")
                         .WithCommandsHandler(commandsHandler)))
                 {

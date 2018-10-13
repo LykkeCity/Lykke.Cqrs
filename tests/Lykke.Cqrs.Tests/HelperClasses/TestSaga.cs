@@ -6,9 +6,8 @@ namespace Lykke.Cqrs.Tests
 {
     internal class TestSaga
     {
-        internal static List<string> Messages = new List<string>();
+        internal static List<object> Messages = new List<object>();
         internal static ManualResetEvent Complete = new ManualResetEvent(false);
-        internal static bool Handled { get; set; }
 
         private void Handle(CashOutCreatedEvent @event, ICommandSender sender, string boundedContext)
         {
@@ -22,7 +21,11 @@ namespace Lykke.Cqrs.Tests
 
         private void Handle(int @event)
         {
-            Handled = true;
+        }
+
+        private void Handle(string @event, ICommandSender commandSender)
+        {
+            Messages.Add(@event);
         }
     }
 }

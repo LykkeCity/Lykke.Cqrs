@@ -98,7 +98,7 @@ namespace Lykke.Cqrs
                 RegisterHandler(
                     method.commandType,
                     o,
-                    method.callParameters.ToDictionary(p => p.parameter, p => p.optionalParameter.Value),
+                    method.callParameters.ToDictionary(p => p.parameter, p => p.optionalParameter?.Value),
                     eventPublisher,
                     method.returnType);
             }
