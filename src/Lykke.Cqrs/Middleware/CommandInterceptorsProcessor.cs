@@ -24,17 +24,19 @@ namespace Lykke.Cqrs.Middleware
             var actualHandlerInterceptor = new CommandActualHandlerInterceptor(actualHandler);
             var interceptor = _commandInterceptors.FirstOrDefault() ?? actualHandlerInterceptor;
 
-            var context = new CommandInterceptionContext
+            var commonContext = new CommandInterceptionContext
             {
                 Command = command,
                 HandlerObject = handlerObject,
                 EventPublisher = eventPublisher,
-                InterceptorsProcessor = this,
-                ActualHandlerInterceptor = actualHandlerInterceptor,
             };
-            context.Next = new CommandInterceptorInvokationDecorator(context, 0);
+            var interceptorContext = new CommandInterceptorContext(
+                commonContext,
+                0,
+                this,
+                actualHandlerInterceptor);
 
-            return interceptor.InterceptAsync(context);
+            return interceptor.InterceptAsync(interceptorContext);
         }
 
         internal ICommandInterceptor ResolveNext(int currentInterceptorIndex, ICommandInterceptor actualHandlerInterceptor)

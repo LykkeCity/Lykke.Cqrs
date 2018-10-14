@@ -1,5 +1,5 @@
-﻿using JetBrains.Annotations;
-using Lykke.Cqrs.Abstractions.Middleware;
+﻿using System.Threading.Tasks;
+using JetBrains.Annotations;
 
 namespace Lykke.Cqrs.Middleware
 {
@@ -18,7 +18,7 @@ namespace Lykke.Cqrs.Middleware
         /// <summary><see cref="ICommandSender"/> implementation.</summary>
         ICommandSender CommandSender { get; set; }
 
-        /// <summary>Next middleware.</summary>
-        IEventInterceptor Next { get; }
+        /// <summary>Invokes next middleware.</summary>
+        Task<CommandHandlingResult> InvokeNext();
     }
 }

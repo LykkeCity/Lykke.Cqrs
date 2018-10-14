@@ -54,7 +54,6 @@ namespace Lykke.Cqrs.Tests
 
                     Assert.True(simpleEventInterceptor.Intercepted);
                     Assert.NotNull(simpleEventInterceptor.InterceptionTimestamp);
-                    Assert.NotNull(simpleEventInterceptor.Next);
                     Assert.True(TestSaga.Messages.Contains("1"));
                 }
             }
@@ -91,9 +90,6 @@ namespace Lykke.Cqrs.Tests
                     Assert.NotNull(simpleEventInterceptorOne.InterceptionTimestamp);
                     Assert.NotNull(simpleEventInterceptorTwo.InterceptionTimestamp);
                     Assert.True(simpleEventInterceptorOne.InterceptionTimestamp < simpleEventInterceptorTwo.InterceptionTimestamp);
-                    Assert.NotNull(simpleEventInterceptorOne.Next);
-                    Assert.NotNull(simpleEventInterceptorTwo.Next);
-                    Assert.AreNotEqual(simpleEventInterceptorOne.Next, simpleEventInterceptorTwo.Next);
                     Assert.True(TestSaga.Messages.Contains("2"));
                 }
             }
@@ -127,7 +123,6 @@ namespace Lykke.Cqrs.Tests
 
                     Assert.True(commandSimpleInterceptor.Intercepted);
                     Assert.NotNull(commandSimpleInterceptor.InterceptionTimestamp);
-                    Assert.NotNull(commandSimpleInterceptor.Next);
                     Assert.True(commandsHandler.HandledCommands.Count > 0);
                 }
             }
@@ -165,9 +160,6 @@ namespace Lykke.Cqrs.Tests
                     Assert.NotNull(commandSimpleInterceptorOne.InterceptionTimestamp);
                     Assert.NotNull(commandSimpleInterceptorTwo.InterceptionTimestamp);
                     Assert.True(commandSimpleInterceptorOne.InterceptionTimestamp < commandSimpleInterceptorTwo.InterceptionTimestamp);
-                    Assert.NotNull(commandSimpleInterceptorOne.Next);
-                    Assert.NotNull(commandSimpleInterceptorTwo.Next);
-                    Assert.AreNotEqual(commandSimpleInterceptorOne.Next, commandSimpleInterceptorTwo.Next);
                     Assert.True(commandsHandler.HandledCommands.Count > 0);
                 }
             }
