@@ -19,6 +19,6 @@ namespace Lykke.Cqrs.Middleware
         IEventPublisher EventPublisher { get; set; }
 
         /// <summary>Invokes next middleware.</summary>
-        Task<CommandHandlingResult> InvokeNext();
+        Task<CommandHandlingResult> InvokeNextAsync();
     }
 }

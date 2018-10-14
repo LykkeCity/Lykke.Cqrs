@@ -15,7 +15,7 @@ namespace Lykke.Cqrs.Tests.HelperClasses
             Intercepted = true;
             InterceptionTimestamp = DateTime.UtcNow;
 
-            return context.InvokeNext();
+            return context.InvokeNextAsync();
         }
     }
 }

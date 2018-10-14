@@ -1,9 +1,52 @@
-﻿namespace Lykke.Cqrs.Middleware
+﻿using System.Threading.Tasks;
+
+namespace Lykke.Cqrs.Middleware
 {
-    internal class EventInterceptionContext
+    internal class EventInterceptionContext : IEventInterceptionContext
     {
-        public object Event { get; set; }
-        public object HandlerObject { get; internal set; }
-        public ICommandSender CommandSender { get; set; }
+        private readonly EventInterceptionCommonContext _context;
+        private readonly int _interceptorIndex;
+        private readonly EventInterceptorsQueue _interceptorsProcessor;
+        private readonly EventActualHandlerInterceptor _actualHandlerInterceptor;
+
+        public object Event
+        {
+            get => _context.Event;
+            set => _context.Event = value;
+        }
+
+        public object HandlerObject => _context.HandlerObject;
+
+        public ICommandSender CommandSender
+        {
+            get => _context.CommandSender;
+            set => _context.CommandSender = value;
+        }
+
+        internal EventInterceptionContext(
+            EventInterceptionCommonContext context,
+            int interceptorIndex,
+            EventInterceptorsQueue interceptorsProcessor,
+            EventActualHandlerInterceptor actualHandlerInterceptor)
+        {
+            _context = context;
+            _interceptorIndex = interceptorIndex;
+            _interceptorsProcessor = interceptorsProcessor;
+            _actualHandlerInterceptor = actualHandlerInterceptor;
+        }
+
+        public Task<CommandHandlingResult> InvokeNextAsync()
+        {
+            var next = _interceptorsProcessor.ResolveNext(_interceptorIndex, _actualHandlerInterceptor);
+            if (next == null)
+                return Task.FromResult(CommandHandlingResult.Ok());
+
+            var contextForNext = new EventInterceptionContext(
+                _context,
+                _interceptorIndex + 1,
+                _interceptorsProcessor,
+                _actualHandlerInterceptor);
+            return next.InterceptAsync(contextForNext);
+        }
     }
 }

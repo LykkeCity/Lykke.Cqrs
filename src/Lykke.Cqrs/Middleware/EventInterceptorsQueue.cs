@@ -24,13 +24,13 @@ namespace Lykke.Cqrs.Middleware
             var actualHandlerInterceptor = new EventActualHandlerInterceptor(actualHandler);
             var interceptor = _eventInterceptors.FirstOrDefault() ?? actualHandlerInterceptor;
 
-            var commonContext = new EventInterceptionContext
+            var commonContext = new EventInterceptionCommonContext
             {
                 Event = @event,
                 HandlerObject = handlerObject,
                 CommandSender = commandSender,
             };
-            var interceptorContext = new EventInterceptorContext(
+            var interceptorContext = new EventInterceptionContext(
                 commonContext,
                 0,
                 this,
