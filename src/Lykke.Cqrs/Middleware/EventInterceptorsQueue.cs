@@ -39,16 +39,13 @@ namespace Lykke.Cqrs.Middleware
             return interceptor.InterceptAsync(interceptorContext);
         }
 
-        internal IEventInterceptor ResolveNext(int currentInterceptorIndex, IEventInterceptor actualHandlerInterceptor)
+        internal IEventInterceptor TryResolveNext(int currentInterceptorIndex)
         {
             if (currentInterceptorIndex < 0)
                 throw new IndexOutOfRangeException($"{nameof(currentInterceptorIndex)} must be non-negative");
 
-            if (currentInterceptorIndex >= _eventInterceptors.Count)
+            if (currentInterceptorIndex >= _eventInterceptors.Count - 1)
                 return null;
-
-            if (currentInterceptorIndex == _eventInterceptors.Count - 1)
-                return actualHandlerInterceptor;
 
             return _eventInterceptors[currentInterceptorIndex + 1];
         }

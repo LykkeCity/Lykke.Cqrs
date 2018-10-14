@@ -37,9 +37,8 @@ namespace Lykke.Cqrs.Middleware
 
         public Task<CommandHandlingResult> InvokeNextAsync()
         {
-            var next = _interceptorsProcessor.ResolveNext(_interceptorIndex, _actualHandlerInterceptor);
-            if (next == null)
-                return Task.FromResult(CommandHandlingResult.Ok());
+            var next = _interceptorsProcessor.TryResolveNext(_interceptorIndex)
+                ?? _actualHandlerInterceptor;
 
             var contextForNext = new CommandInterceptionContext(
                 _commonContext,
