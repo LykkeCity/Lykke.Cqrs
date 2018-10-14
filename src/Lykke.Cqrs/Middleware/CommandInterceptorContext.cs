@@ -6,7 +6,7 @@ namespace Lykke.Cqrs.Middleware
     {
         private readonly CommandInterceptionContext _context;
         private readonly int _interceptorIndex;
-        private readonly CommandInterceptorsProcessor _interceptorsProcessor;
+        private readonly CommandInterceptorsQueue _interceptorsProcessor;
         private readonly CommandActualHandlerInterceptor _actualHandlerInterceptor;
 
         public object Command
@@ -26,7 +26,7 @@ namespace Lykke.Cqrs.Middleware
         internal CommandInterceptorContext(
             CommandInterceptionContext context,
             int interceptorIndex,
-            CommandInterceptorsProcessor interceptorsProcessor,
+            CommandInterceptorsQueue interceptorsProcessor,
             CommandActualHandlerInterceptor actualHandlerInterceptor)
         {
             _context = context;

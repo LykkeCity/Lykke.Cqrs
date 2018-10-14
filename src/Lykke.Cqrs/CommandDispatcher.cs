@@ -20,7 +20,7 @@ namespace Lykke.Cqrs
         private readonly Dictionary<Type, CommandHandlerInfo> _handlers = new Dictionary<Type, CommandHandlerInfo>();
         private readonly string _boundedContext;
         private readonly ILog _log;
-        private readonly CommandInterceptorsProcessor _commandInterceptorsProcessor;
+        private readonly CommandInterceptorsQueue _commandInterceptorsProcessor;
         private readonly MethodInfo _getAwaiterInfo;
         private readonly bool _enableCommandsLogging;
         private readonly long _failedCommandRetryDelay;
@@ -31,7 +31,7 @@ namespace Lykke.Cqrs
         internal CommandDispatcher(
             ILog log,
             string boundedContext,
-            CommandInterceptorsProcessor commandInterceptorsProcessor,
+            CommandInterceptorsQueue commandInterceptorsProcessor,
             bool enableCommandsLogging,
             long failedCommandRetryDelay = FailedCommandRetryDelay)
         {
@@ -49,12 +49,12 @@ namespace Lykke.Cqrs
         internal CommandDispatcher(
             ILogFactory logFactory,
             string boundedContext,
-            CommandInterceptorsProcessor commandInterceptorsProcessor = null,
+            CommandInterceptorsQueue commandInterceptorsProcessor = null,
             bool enableCommandsLogging = true,
             long failedCommandRetryDelay = 60000)
         {
             _log = logFactory.CreateLog(this);
-            _commandInterceptorsProcessor = commandInterceptorsProcessor ?? new CommandInterceptorsProcessor();
+            _commandInterceptorsProcessor = commandInterceptorsProcessor ?? new CommandInterceptorsQueue();
             _failedCommandRetryDelay = failedCommandRetryDelay;
             _boundedContext = boundedContext;
             _enableCommandsLogging = enableCommandsLogging;

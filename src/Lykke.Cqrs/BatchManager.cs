@@ -19,7 +19,7 @@ namespace Lykke.Cqrs
         private readonly long _failedEventRetryDelay;
         private readonly Stopwatch _sinceFirstEvent = new Stopwatch();
         private readonly bool _enableEventsLogging;
-        private readonly EventInterceptorsProcessor _eventInterceptorsProcessor;
+        private readonly EventInterceptorsQueue _eventInterceptorsProcessor;
         private readonly Func<object> _beforeBatchApply;
         private readonly Action<object> _afterBatchApply;
 
@@ -32,7 +32,7 @@ namespace Lykke.Cqrs
             ILog log,
             long failedEventRetryDelay,
             bool enableEventsLogging,
-            EventInterceptorsProcessor eventInterceptorsProcessor,
+            EventInterceptorsQueue eventInterceptorsProcessor,
             int batchSize = 0,
             long applyTimeout = 0,
             Func<object> beforeBatchApply = null,
@@ -52,7 +52,7 @@ namespace Lykke.Cqrs
             ILogFactory logFactory,
             long failedEventRetryDelay,
             bool enableEventsLogging,
-            EventInterceptorsProcessor eventInterceptorsProcessor,
+            EventInterceptorsQueue eventInterceptorsProcessor,
             int batchSize = 0,
             long applyTimeout = 0,
             Func<object> beforeBatchApply = null,

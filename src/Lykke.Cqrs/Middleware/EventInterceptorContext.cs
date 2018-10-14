@@ -6,7 +6,7 @@ namespace Lykke.Cqrs.Middleware
     {
         private readonly EventInterceptionContext _context;
         private readonly int _interceptorIndex;
-        private readonly EventInterceptorsProcessor _interceptorsProcessor;
+        private readonly EventInterceptorsQueue _interceptorsProcessor;
         private readonly EventActualHandlerInterceptor _actualHandlerInterceptor;
 
         public object Event
@@ -26,7 +26,7 @@ namespace Lykke.Cqrs.Middleware
         internal EventInterceptorContext(
             EventInterceptionContext context,
             int interceptorIndex,
-            EventInterceptorsProcessor interceptorsProcessor,
+            EventInterceptorsQueue interceptorsProcessor,
             EventActualHandlerInterceptor actualHandlerInterceptor)
         {
             _context = context;

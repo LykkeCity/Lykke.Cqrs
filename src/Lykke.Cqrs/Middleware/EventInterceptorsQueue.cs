@@ -6,7 +6,7 @@ using Lykke.Cqrs.Abstractions.Middleware;
 
 namespace Lykke.Cqrs.Middleware
 {
-    internal class EventInterceptorsProcessor
+    internal class EventInterceptorsQueue
     {
         private readonly List<IEventInterceptor> _eventInterceptors = new List<IEventInterceptor>();
 

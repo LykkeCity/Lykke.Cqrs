@@ -23,7 +23,7 @@ namespace Lykke.Cqrs
         private readonly Dictionary<EventOrigin, List<(EventHandlerInfo, BatchManager)>> _handlerInfos =
             new Dictionary<EventOrigin, List<(EventHandlerInfo, BatchManager)>>();
         private readonly ILog _log;
-        private readonly EventInterceptorsProcessor _eventInterceptorsProcessor;
+        private readonly EventInterceptorsQueue _eventInterceptorsProcessor;
         private readonly string _boundedContext;
         private readonly ManualResetEvent _stop = new ManualResetEvent(false);
         private readonly Thread _applyBatchesThread;
@@ -36,10 +36,10 @@ namespace Lykke.Cqrs
         public EventDispatcher(
             ILog log,
             string boundedContext,
-            EventInterceptorsProcessor eventInterceptorsProcessor,
+            EventInterceptorsQueue eventInterceptorsProcessor,
             bool enableEventsLogging = true)
         {
-            _eventInterceptorsProcessor = eventInterceptorsProcessor ?? new EventInterceptorsProcessor();
+            _eventInterceptorsProcessor = eventInterceptorsProcessor ?? new EventInterceptorsQueue();
             _defaultBatchManager = new BatchManager(
                 log,
                 FailedEventRetryDelay,
@@ -67,10 +67,10 @@ namespace Lykke.Cqrs
         public EventDispatcher(
             ILogFactory logFactory,
             string boundedContext,
-            EventInterceptorsProcessor eventInterceptorsProcessor = null,
+            EventInterceptorsQueue eventInterceptorsProcessor = null,
             bool enableEventsLogging = true)
         {
-            _eventInterceptorsProcessor = eventInterceptorsProcessor ?? new EventInterceptorsProcessor();
+            _eventInterceptorsProcessor = eventInterceptorsProcessor ?? new EventInterceptorsQueue();
             _defaultBatchManager = new BatchManager(
                 logFactory,
                 FailedEventRetryDelay,

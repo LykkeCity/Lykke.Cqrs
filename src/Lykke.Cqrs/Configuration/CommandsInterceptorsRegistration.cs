@@ -27,14 +27,14 @@ namespace Lykke.Cqrs.Configuration
                 foreach (var commandsInterceptorType in Dependencies)
                 {
                     var commandInterceptorImpl = (ICommandInterceptor)cqrsEngine.DependencyResolver.GetService(commandsInterceptorType);
-                    cqrsEngine.CommandInterceptorsProcessor.AddInterceptor(commandInterceptorImpl);
+                    cqrsEngine.CommandInterceptorsQueue.AddInterceptor(commandInterceptorImpl);
                 }
             }
             else
             {
                 foreach (var commandInterceptor in _commandInterceptors)
                 {
-                    cqrsEngine.CommandInterceptorsProcessor.AddInterceptor(commandInterceptor);
+                    cqrsEngine.CommandInterceptorsQueue.AddInterceptor(commandInterceptor);
                 }
             }
         }

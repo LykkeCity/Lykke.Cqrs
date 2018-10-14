@@ -6,7 +6,7 @@ using Lykke.Cqrs.Abstractions.Middleware;
 
 namespace Lykke.Cqrs.Middleware
 {
-    internal class CommandInterceptorsProcessor
+    internal class CommandInterceptorsQueue
     {
         private readonly List<ICommandInterceptor> _commandInterceptors = new List<ICommandInterceptor>();
 
