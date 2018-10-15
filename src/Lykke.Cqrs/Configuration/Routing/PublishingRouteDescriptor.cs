@@ -8,7 +8,7 @@ namespace Lykke.Cqrs.Configuration.Routing
         where TRegistration : IRegistration
     {
         protected TDescriptor Descriptor { private get; set; }
-        protected internal  string Route { get; private set; }
+        protected internal string Route { get; private set; }
 
         protected PublishingRouteDescriptor(TRegistration registration)
             : base(registration)

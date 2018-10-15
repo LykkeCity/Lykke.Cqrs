@@ -32,7 +32,7 @@ namespace Lykke.Cqrs.Tests
             HandledCommands.Add(command);
         }
 
-        private void Handle(int command)
+        private void Handle(int command, IEventPublisher eventPublisher)
         {
             if (_shouldThrow)
                 throw new InvalidOperationException();

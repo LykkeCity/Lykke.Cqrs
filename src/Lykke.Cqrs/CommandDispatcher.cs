@@ -10,16 +10,17 @@ using Common.Log;
 using Lykke.Common.Log;
 using Lykke.Messaging.Contract;
 using Lykke.Cqrs.InfrastructureCommands;
+using Lykke.Cqrs.Middleware;
 using Lykke.Cqrs.Utils;
 
 namespace Lykke.Cqrs
 {
     internal class CommandDispatcher : IDisposable
     {
-        private readonly Dictionary<Type, (string, Func<object, Endpoint, string, CommandHandlingResult>)> _handlers =
-            new Dictionary<Type, (string, Func<object, Endpoint, string, CommandHandlingResult>)>();
+        private readonly Dictionary<Type, CommandHandlerInfo> _handlers = new Dictionary<Type, CommandHandlerInfo>();
         private readonly string _boundedContext;
         private readonly ILog _log;
+        private readonly CommandInterceptorsQueue _commandInterceptorsProcessor;
         private readonly MethodInfo _getAwaiterInfo;
         private readonly bool _enableCommandsLogging;
         private readonly long _failedCommandRetryDelay;
@@ -27,13 +28,15 @@ namespace Lykke.Cqrs
         internal const long FailedCommandRetryDelay = 60000;
 
         [Obsolete]
-        public CommandDispatcher(
+        internal CommandDispatcher(
             ILog log,
             string boundedContext,
+            CommandInterceptorsQueue commandInterceptorsProcessor,
             bool enableCommandsLogging,
             long failedCommandRetryDelay = FailedCommandRetryDelay)
         {
             _log = log;
+            _commandInterceptorsProcessor = commandInterceptorsProcessor;
             _failedCommandRetryDelay = failedCommandRetryDelay;
             _boundedContext = boundedContext;
             _enableCommandsLogging = enableCommandsLogging;
@@ -43,13 +46,15 @@ namespace Lykke.Cqrs
             _getAwaiterInfo = taskMethods.First(m => m.Name == "GetAwaiter" && m.ReturnType == awaiterResultType);
         }
 
-        public CommandDispatcher(
+        internal CommandDispatcher(
             ILogFactory logFactory,
             string boundedContext,
+            CommandInterceptorsQueue commandInterceptorsProcessor = null,
             bool enableCommandsLogging = true,
             long failedCommandRetryDelay = 60000)
         {
             _log = logFactory.CreateLog(this);
+            _commandInterceptorsProcessor = commandInterceptorsProcessor ?? new CommandInterceptorsQueue();
             _failedCommandRetryDelay = failedCommandRetryDelay;
             _boundedContext = boundedContext;
             _enableCommandsLogging = enableCommandsLogging;
@@ -62,7 +67,7 @@ namespace Lykke.Cqrs
         public void Wire(object o, params OptionalParameterBase[] parameters)
         {
             if (o == null)
-                throw new ArgumentNullException("o");
+                throw new ArgumentNullException(nameof(o));
 
             parameters = parameters
                 .Concat(new OptionalParameterBase[] { new OptionalParameter<string>("boundedContext", _boundedContext) })
@@ -86,12 +91,15 @@ namespace Lykke.Cqrs
                 })
                 .Where(m => m.callParameters.All(p => p.parameter != null));
 
+            var eventPublisher = (IEventPublisher)parameters?.FirstOrDefault(p => p.Type == typeof(IEventPublisher))?.Value;
+
             foreach (var method in handleMethods)
             {
                 RegisterHandler(
                     method.commandType,
                     o,
-                    method.callParameters.ToDictionary(p => p.parameter, p => p.optionalParameter.Value),
+                    method.callParameters.ToDictionary(p => p.parameter, p => p.optionalParameter?.Value),
+                    eventPublisher,
                     method.returnType);
             }
         }
@@ -122,12 +130,14 @@ namespace Lykke.Cqrs
             Type commandType,
             object o,
             Dictionary<ParameterInfo, object> optionalParameters,
+            IEventPublisher eventPublisher,
             Type returnType)
         {
             var isRoutedCommandHandler = commandType.IsGenericType && commandType.GetGenericTypeDefinition() == typeof (RoutedCommand<>);
-            var command = Expression.Parameter(typeof(object), "command");
-            var endpoint = Expression.Parameter(typeof(Endpoint), "endpoint");
-            var route = Expression.Parameter(typeof(string), "route");
+            var command = Expression.Parameter(typeof(object));
+            var eventPublisherParam = Expression.Parameter(typeof(IEventPublisher));
+            var endpoint = Expression.Parameter(typeof(Endpoint));
+            var route = Expression.Parameter(typeof(string));
 
             Expression commandParameter;
             Type handledType;
@@ -145,7 +155,7 @@ namespace Lykke.Cqrs
 
             if (_handlers.ContainsKey(handledType))
                 throw new InvalidOperationException(
-                    $"Only one handler per command is allowed. Command {commandType} handler is already registered in bound context {_boundedContext}. Can not register {o} as handler for it");
+                    $"Command handler for {commandType} is already registered in bound context {_boundedContext}. Can not register {o.GetType().Name} as handler for it");
 
             // prepare variables expressions
             var variables = optionalParameters
@@ -156,8 +166,11 @@ namespace Lykke.Cqrs
             var parameters = new[] { commandParameter }
                  .Concat(optionalParameters.Select(p => 
                      variables.ContainsKey(p.Key.Name)
-                     ? (Expression)variables[p.Key.Name]
-                     : (Expression)Expression.Constant(p.Value, p.Key.ParameterType))).ToArray();
+                         ? variables[p.Key.Name]
+                         : (p.Key.ParameterType == typeof(IEventPublisher)
+                               ? eventPublisherParam
+                               : (Expression)Expression.Constant(p.Value, p.Key.ParameterType))))
+                .ToArray();
 
             var handleCall = Expression.Call(Expression.Constant(o), "Handle", null, parameters);
             MethodCallExpression resultCall;
@@ -202,9 +215,20 @@ namespace Lykke.Cqrs
                     Expression.Constant(new CommandHandlingResult { Retry = false, RetryDelay = 0 }));
                 call = Expression.Block(call, returnLabel);
             }
-            var lambda = (Expression<Func<object, Endpoint, string, CommandHandlingResult>>)Expression.Lambda(call, command, endpoint, route);
+            var lambda = (Expression<Func<object, IEventPublisher, Endpoint, string, CommandHandlingResult>>)Expression.Lambda(
+                call,
+                command,
+                eventPublisherParam,
+                endpoint,
+                route);
 
-            _handlers.Add(handledType, (o.GetType().Name, lambda.Compile()));
+            _handlers.Add(
+                handledType,
+                new CommandHandlerInfo(
+                    o,
+                    eventPublisher,
+                    lambda.Compile()
+                ));
         }
 
         public void Dispatch(
@@ -226,8 +250,7 @@ namespace Lykke.Cqrs
             Handle(
                 command,
                 acknowledge,
-                handlerInfo.Item1,
-                handlerInfo.Item2,
+                handlerInfo,
                 commandOriginEndpoint,
                 route);
         }
@@ -235,29 +258,35 @@ namespace Lykke.Cqrs
         private void Handle(
             object command,
             AcknowledgeDelegate acknowledge,
-            string handlerTypeName,
-            Func<object, Endpoint, string, CommandHandlingResult> handler,
+            CommandHandlerInfo commandHandlerInfo,
             Endpoint commandOriginEndpoint,
             string route)
         {
             string commandType = command?.GetType().Name ?? "Unknown command type";
             if (_enableCommandsLogging)
-                _log.WriteInfoAsync(handlerTypeName, commandType, command?.ToJson(), "Command handled")
+                _log.WriteInfoAsync(commandHandlerInfo.HandlerTypeName, commandType, command?.ToJson(), "Command is about to be handled")
                     .GetAwaiter().GetResult();
 
             var telemtryOperation = TelemetryHelper.InitTelemetryOperation(
                 "Cqrs handle command",
-                handlerTypeName,
+                commandHandlerInfo.HandlerTypeName,
                 commandType,
                 _boundedContext);
             try
             {
-                var result = handler(command, commandOriginEndpoint, route);
+                var result = _commandInterceptorsProcessor.RunInterceptorsAsync(
+                    command,
+                    commandHandlerInfo.HandlerObject,
+                    commandHandlerInfo.EventPublisher,
+                    (c, e) => commandHandlerInfo.Handler(c, e, commandOriginEndpoint, route))
+                    .ConfigureAwait(false)
+                    .GetAwaiter()
+                    .GetResult();
                 acknowledge(result.RetryDelay, !result.Retry);
             }
             catch (Exception e)
             {
-                _log.WriteErrorAsync(handlerTypeName, commandType, command?.ToJson() ?? "", e)
+                _log.WriteErrorAsync(commandHandlerInfo.HandlerTypeName, commandType, command?.ToJson() ?? "", e)
                     .GetAwaiter().GetResult();
 
                 acknowledge(_failedCommandRetryDelay, false);
