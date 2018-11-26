@@ -567,15 +567,14 @@ namespace Lykke.Cqrs.Tests
                     {"InMemory", new TransportInfo("none", "none", "none", null, "InMemory")}
                 })))
             {
-                using (var engine = new CqrsEngine(
-                    _logFactory,
-                    messagingEngine,
-                    Register.DefaultEndpointResolver(new InMemoryEndpointResolver()),
-                    Register.Saga<TestSaga>("swift-cashout")
-                        .ListeningEvents(GetType()).From("lykke-wallet").On("lykke-wallet-events")))
-                {
-                    Assert.Throws<InvalidOperationException>(() => engine.Start(), "Engine must throw exception if Saga doesn't handle listened events");
-                }
+                Assert.Throws<InvalidOperationException>(
+                    () => new CqrsEngine(
+                        _logFactory,
+                        messagingEngine,
+                        Register.DefaultEndpointResolver(new InMemoryEndpointResolver()),
+                        Register.Saga<TestSaga>("swift-cashout")
+                            .ListeningEvents(GetType()).From("lykke-wallet").On("lykke-wallet-events")),
+                    "Engine must throw exception if Saga doesn't handle listened events");
             }
         }
 
@@ -589,15 +588,14 @@ namespace Lykke.Cqrs.Tests
                     {"InMemory", new TransportInfo("none", "none", "none", null, "InMemory")}
                 })))
             {
-                using (var engine = new CqrsEngine(
-                    _logFactory,
-                    messagingEngine,
-                    Register.DefaultEndpointResolver(new InMemoryEndpointResolver()),
-                    Register.BoundedContext("swift-cashout")
-                        .ListeningCommands(GetType()).On("lykke-wallet")))
-                {
-                    Assert.Throws<InvalidOperationException>(() => engine.Start(), "Engine must throw exception if command handler doesn't handle listened commands");
-                }
+                Assert.Throws<InvalidOperationException>(
+                    () => new CqrsEngine(
+                        _logFactory,
+                        messagingEngine,
+                        Register.DefaultEndpointResolver(new InMemoryEndpointResolver()),
+                        Register.BoundedContext("swift-cashout")
+                            .ListeningCommands(GetType()).On("lykke-wallet")),
+                    "Engine must throw exception if command handler doesn't handle listened commands");
             }
         }
     }
