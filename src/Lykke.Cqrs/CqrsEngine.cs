@@ -257,16 +257,31 @@ namespace Lykke.Cqrs
                     EnableInputMessagesLogging);
         }
 
-        public void Start()
+        public void StartPublishers()
+        {
+            EnsureEndpoints(CommunicationType.Publish);
+        }
+
+        public void StartSubscribers()
         {
             EnsureEndpoints(CommunicationType.Subscribe);
 
             InitSubscriptions();
+        }
 
+        public void StartProcesses()
+        {
             foreach (var boundedContext in Contexts)
             {
                 boundedContext.Processes.ForEach(p => p.Start(boundedContext, boundedContext.EventsPublisher));
             }
+        }
+
+        public void StartAll()
+        {
+            StartPublishers();
+            StartSubscribers();
+            StartProcesses();
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
@@ -377,8 +392,6 @@ namespace Lykke.Cqrs
 
                 routeMap.ResolveRoutes(_endpointProvider);
             }
-
-            EnsureEndpoints(CommunicationType.Publish);
         }
 
         private void EnsureEndpoints(CommunicationType processingCommunicationType)

@@ -26,8 +26,23 @@ namespace Lykke.Cqrs
         void PublishEvent(object @event, string boundedContext);
 
         /// <summary>
-        /// Triggers cqrs engine init procedures.
+        /// Starts cqrs engine subscribers.
         /// </summary>
-        void Start();
+        void StartSubscribers();
+
+        /// <summary>
+        /// Starts cqrs engine publishers.
+        /// </summary>
+        void StartPublishers();
+
+        /// <summary>
+        /// Starts cqrs engine processes.
+        /// </summary>
+        void StartProcesses();
+
+        /// <summary>
+        /// Starts full cqrs engine - same as StartSubscribers, StartPublishers and StartProcesses called together.
+        /// </summary>
+        void StartAll();
     }
 }

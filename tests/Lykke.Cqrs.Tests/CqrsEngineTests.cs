@@ -53,7 +53,8 @@ namespace Lykke.Cqrs.Tests
                            .ListeningCommands(typeof(string)).On("exchange2")
                            .WithCommandsHandler(commandHandler)))
                 {
-                    engine.Start();
+                    engine.StartPublishers();
+                    engine.StartSubscribers();
                     messagingEngine.Send("test1", new Endpoint("InMemory", "exchange1", serializationFormat: SerializationFormat.Json));
                     messagingEngine.Send("test2", new Endpoint("InMemory", "exchange2", serializationFormat: SerializationFormat.Json));
                     messagingEngine.Send("test3", new Endpoint("InMemory", "exchange3", serializationFormat: SerializationFormat.Json));
@@ -86,7 +87,7 @@ namespace Lykke.Cqrs.Tests
                         .PublishingCommands(typeof(string)).To("bc1").With("defaultCommands")
                         .PublishingCommands(typeof(int)).To("bc1").With("defaultCommands")))
                 {
-                    engine.Start();
+                    engine.StartPublishers();
                     var received = new AutoResetEvent(false);
                     using (messagingEngine.Subscribe(defaultCommands, o => received.Set(), s => { }, typeof(string)))
                     {
@@ -138,7 +139,8 @@ namespace Lykke.Cqrs.Tests
                         .With("operations-commands"))
                 )
                 {
-                    engine.Start();
+                    engine.StartPublishers();
+                    engine.StartSubscribers();
                     engine.SendCommand(new CreateCashOutCommand { Payload = "test data" }, null, "lykke-wallet");
 
                     Assert.True(TestSaga.Complete.WaitOne(2000), "Saga has not got events or failed to send command");
@@ -197,7 +199,8 @@ namespace Lykke.Cqrs.Tests
                         new RabbitMqConventionEndpointResolver("rmq", SerializationFormat.Json))
                 ))
                 {
-                    engine.Start();
+                    engine.StartPublishers();
+                    engine.StartSubscribers();
                 }
             }
         }
@@ -231,7 +234,8 @@ namespace Lykke.Cqrs.Tests
                         .ProcessingOptions("commandsRoute").MultiThreaded(2)
                         .WithCommandsHandler(commandHandler)))
                 {
-                    engine.Start();
+                    engine.StartPublishers();
+                    engine.StartSubscribers();
                     messagingEngine.Send("low1", new Endpoint("InMemory", "bc.exchange2", serializationFormat: SerializationFormat.Json));
                     messagingEngine.Send("low2", new Endpoint("InMemory", "bc.exchange2", serializationFormat: SerializationFormat.Json));
                     messagingEngine.Send("low3", new Endpoint("InMemory", "bc.exchange2", serializationFormat: SerializationFormat.Json));
@@ -376,7 +380,7 @@ namespace Lykke.Cqrs.Tests
                     .WithProcess(testProcess)
             ))
             {
-                engine.Start();
+                engine.StartAll();
                 Assert.True(testProcess.Started.WaitOne(1000), "process was not started");
                 Thread.Sleep(1000);
             }
@@ -544,13 +548,14 @@ namespace Lykke.Cqrs.Tests
                     messagingEngine,
                     endpointProvider.Object,
                     false,
-                    Register.BoundedContext("bc").ListeningEvents(typeof(DateTime)).From("other").On("route")
+                    Register.BoundedContext("bc")
+                        .ListeningEvents(typeof(DateTime)).From("other").On("route")
                         .WithProjection(handler, "other", 1, 0,
                             h => h.OnBatchStart(),
                             (h, c) => h.OnBatchFinish(c)
                         )))
                 {
-                    engine.Start();
+                    engine.StartSubscribers();
                     messagingEngine.Send(DateTime.Now, endpoint);
                     Thread.Sleep(20000);
                 }

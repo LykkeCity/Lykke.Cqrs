@@ -161,7 +161,7 @@ namespace Lykke.Cqrs.Castle
             Kernel.Register(Component.For<ICommandSender>().ImplementedBy<CommandSender>().DependsOn(new { kernel = Kernel }));
 
             m_CqrsEngine = Kernel.Resolve<ICqrsEngine>();
-            m_CqrsEngine.Start();
+            m_CqrsEngine.StartAll();
         }
     }
 }
