@@ -129,7 +129,7 @@ namespace Lykke.Cqrs
             CommandInterceptorsQueue = new CommandInterceptorsQueue();
             EventInterceptorsQueue = new EventInterceptorsQueue();
 
-            PartiallyInitRegistrations(registrations);
+            InitRegistrations(registrations);
         }
 
         #endregion
@@ -222,7 +222,7 @@ namespace Lykke.Cqrs
             CommandInterceptorsQueue = new CommandInterceptorsQueue();
             EventInterceptorsQueue = new EventInterceptorsQueue();
 
-            PartiallyInitRegistrations(registrations);
+            InitRegistrations(registrations);
         }
 
         internal CommandDispatcher CreateCommandsDispatcher(string name, long failedCommandRetryDelay)
@@ -371,7 +371,7 @@ namespace Lykke.Cqrs
             }
         }
 
-        private void PartiallyInitRegistrations(IEnumerable<IRegistration> registrations)
+        private void InitRegistrations(IEnumerable<IRegistration> registrations)
         {
             foreach (var registration in registrations)
             {

@@ -64,7 +64,7 @@ namespace Lykke.Cqrs
                         processingGroup = route.ProcessingGroupName,
                         endpoint = messageRoute.Value
                     }
-                ).ToList();
+                ).ToArray();
             if (!publishDirections.Any())
                 return false;
 
