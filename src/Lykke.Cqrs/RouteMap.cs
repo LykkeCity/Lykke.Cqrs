@@ -11,6 +11,7 @@ namespace Lykke.Cqrs
     public class RouteMap : IRouteMap
     {
         private readonly Dictionary<string, Route> m_RouteMap = new Dictionary<string, Route>();
+
         public string Name { get; private set; }
 
         public RouteMap(string name)
@@ -33,9 +34,8 @@ namespace Lykke.Cqrs
             get
             {
                 if (string.IsNullOrEmpty(name))
-                    throw new ArgumentException("name should be not empty string", "name");
-                Route route;
-                if (m_RouteMap.TryGetValue(name, out route))
+                    throw new ArgumentException("name should be not empty string", nameof(name));
+                if (m_RouteMap.TryGetValue(name, out var route))
                     return route;
 
                 route = new Route(name, Name);
@@ -67,6 +67,7 @@ namespace Lykke.Cqrs
                 ).ToArray();
             if (!publishDirections.Any())
                 return false;
+
             foreach (var direction in publishDirections)
             {
                 messagingEngine.Send(message, direction.endpoint, direction.processingGroup);

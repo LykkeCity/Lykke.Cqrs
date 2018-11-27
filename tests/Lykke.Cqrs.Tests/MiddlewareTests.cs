@@ -48,7 +48,7 @@ namespace Lykke.Cqrs.Tests
                     Register.Saga<TestSaga>("test1")
                         .ListeningEvents(typeof(string)).From("lykke-wallet").On("lykke-wallet-events")))
                 {
-                    engine.Start();
+                    engine.StartSubscribers();
                     messagingEngine.Send("1", new Endpoint("InMemory", "lykke-wallet-events", serializationFormat: SerializationFormat.Json));
                     Thread.Sleep(1000);
 
@@ -81,7 +81,7 @@ namespace Lykke.Cqrs.Tests
                     Register.Saga<TestSaga>("test2")
                         .ListeningEvents(typeof(string)).From("lykke-wallet").On("lykke-wallet-events")))
                 {
-                    engine.Start();
+                    engine.StartSubscribers();
                     messagingEngine.Send("2", new Endpoint("InMemory", "lykke-wallet-events", serializationFormat: SerializationFormat.Json));
                     Thread.Sleep(1000);
 
@@ -117,7 +117,7 @@ namespace Lykke.Cqrs.Tests
                         .ListeningCommands(typeof(int)).On("lykke-wallet-events")
                         .WithCommandsHandler(commandsHandler)))
                 {
-                    engine.Start();
+                    engine.StartSubscribers();
                     messagingEngine.Send(1, new Endpoint("InMemory", "lykke-wallet-events", serializationFormat: SerializationFormat.Json));
                     Thread.Sleep(1000);
 
@@ -151,7 +151,7 @@ namespace Lykke.Cqrs.Tests
                         .ListeningCommands(typeof(int)).On("lykke-wallet-events")
                         .WithCommandsHandler(commandsHandler)))
                 {
-                    engine.Start();
+                    engine.StartSubscribers();
                     messagingEngine.Send(1, new Endpoint("InMemory", "lykke-wallet-events", serializationFormat: SerializationFormat.Json));
                     Thread.Sleep(1000);
 
