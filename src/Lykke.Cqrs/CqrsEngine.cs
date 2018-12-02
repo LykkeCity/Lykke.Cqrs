@@ -398,6 +398,9 @@ namespace Lykke.Cqrs
         {
             var allEndpointsAreValid = true;
             var errorMessage = new StringBuilder("Some endpoints are not valid:").AppendLine();
+            var endpointMessagesDict = new Dictionary<Endpoint, string>();
+
+            _log.WriteInfo(nameof(CqrsEngine), nameof(EnsureEndpoints), $"Endpoins verification for {processingCommunicationType}");
 
             foreach (var routeMap in new List<RouteMap> { DefaultRouteMap }.Concat(Contexts))
             {
@@ -410,57 +413,29 @@ namespace Lykke.Cqrs
                             continue;
 
                         var endpoint = messageRoute.Value;
-                        var messageTypeName = route.Type.ToString().ToLower().TrimEnd('s');
-
-                        bool result = true;
-                        string error;
-                        switch (routingKey.CommunicationType)
-                        {
-                            case CommunicationType.Publish:
-                                if (!MessagingEngine.VerifyEndpoint(endpoint, EndpointUsage.Publish, _createMissingEndpoints, out error))
-                                {
-                                    errorMessage
-                                        .AppendFormat(
-                                            "Route '{1}' within bounded context '{0}' for {2} type '{3}' has resolved endpoint {4} that is not properly configured for publishing: {5}.",
-                                            routeMap.Name,
-                                            route.Name,
-                                            messageTypeName,
-                                            routingKey.MessageType.Name,
-                                            endpoint, error)
-                                        .AppendLine();
-                                    result = false;
-                                }
-
-                                _log.WriteInfo(
-                                    nameof(CqrsEngine),
-                                    nameof(EnsureEndpoints),
-                                    $"Context {routeMap.Name}: publishing '{routingKey.MessageType.Name}' to {endpoint}\t{(result ? "OK" : "ERROR:" + error)}");
-                                break;
-                            case CommunicationType.Subscribe:
-                                if (!MessagingEngine.VerifyEndpoint(endpoint, EndpointUsage.Subscribe, _createMissingEndpoints, out error))
-                                {
-                                    errorMessage
-                                        .AppendFormat(
-                                            "Route '{1}' within bounded context '{0}' for {2} type '{3}' has resolved endpoint {4} that is not properly configured for subscription: {5}.",
-                                            routeMap.Name,
-                                            route.Name,
-                                            messageTypeName,
-                                            routingKey.MessageType.Name,
-                                            endpoint,
-                                            error)
-                                        .AppendLine();
-                                    result = false;
-                                }
-
-                                _log.WriteInfo(
-                                    nameof(CqrsEngine),
-                                    nameof(EnsureEndpoints),
-                                    $"Context {routeMap.Name}: subscribing '{routingKey.MessageType.Name}' on {endpoint}\t{(result ? "OK" : "ERROR:" + error)}");
-                                break;
-                        }
-                        allEndpointsAreValid = allEndpointsAreValid && result;
+                        endpointMessagesDict[endpoint] =
+                            $"Context {routeMap.Name}: "
+                            + (processingCommunicationType == CommunicationType.Publish
+                                ? $"publishing '{routingKey.MessageType.Name}' to"
+                                : $"subscribing '{routingKey.MessageType.Name}' on")
+                            + $" {endpoint}\t{{0}}";
                     }
                 }
+            }
+
+            var endpointsErrorsDict = MessagingEngine.VerifyEndpoints(
+                processingCommunicationType == CommunicationType.Publish ? EndpointUsage.Publish : EndpointUsage.Subscribe,
+                endpointMessagesDict.Keys,
+                _createMissingEndpoints);
+            foreach (var endpointError in endpointsErrorsDict)
+            {
+                string messagePattern = endpointMessagesDict[endpointError.Key];
+                string message = string.Format(
+                    messagePattern,
+                    string.IsNullOrWhiteSpace(endpointError.Value)
+                        ? "OK"
+                        : $"ERROR: {endpointError.Value}");
+                _log.WriteInfo(nameof(CqrsEngine), nameof(EnsureEndpoints), message);
             }
 
             if (!allEndpointsAreValid)
