@@ -29,25 +29,21 @@ namespace Lykke.Cqrs
         private readonly Thread _applyBatchesThread;
         private readonly BatchManager _defaultBatchManager;
         private readonly MethodInfo _getAwaiterInfo;
-        private readonly bool _enableEventsLogging;
         private readonly ILogFactory _logFactory;
 
         [Obsolete]
         public EventDispatcher(
             ILog log,
             string boundedContext,
-            EventInterceptorsQueue eventInterceptorsProcessor,
-            bool enableEventsLogging = true)
+            EventInterceptorsQueue eventInterceptorsProcessor)
         {
             _eventInterceptorsProcessor = eventInterceptorsProcessor ?? new EventInterceptorsQueue();
             _defaultBatchManager = new BatchManager(
                 log,
                 FailedEventRetryDelay,
-                enableEventsLogging,
                 _eventInterceptorsProcessor);
             _log = log;
             _boundedContext = boundedContext;
-            _enableEventsLogging = enableEventsLogging;
             _applyBatchesThread = new Thread(() =>
             {
                 while (!_stop.WaitOne(1000))
@@ -67,19 +63,16 @@ namespace Lykke.Cqrs
         public EventDispatcher(
             ILogFactory logFactory,
             string boundedContext,
-            EventInterceptorsQueue eventInterceptorsProcessor = null,
-            bool enableEventsLogging = true)
+            EventInterceptorsQueue eventInterceptorsProcessor = null)
         {
             _eventInterceptorsProcessor = eventInterceptorsProcessor ?? new EventInterceptorsQueue();
             _defaultBatchManager = new BatchManager(
                 logFactory,
                 FailedEventRetryDelay,
-                enableEventsLogging,
                 _eventInterceptorsProcessor);
             _log = logFactory.CreateLog(this);
             _logFactory = logFactory;
             _boundedContext = boundedContext;
-            _enableEventsLogging = enableEventsLogging;
             _applyBatchesThread = new Thread(() =>
             {
                 while (!_stop.WaitOne(1000))
@@ -150,7 +143,6 @@ namespace Lykke.Cqrs
                     ? new BatchManager(
                         _logFactory,
                         FailedEventRetryDelay,
-                        _enableEventsLogging,
                         _eventInterceptorsProcessor,
                         batchSize,
                         applyTimeoutInSeconds * 1000,
@@ -159,7 +151,6 @@ namespace Lykke.Cqrs
                     : new BatchManager(
                         _log,
                         FailedEventRetryDelay,
-                        _enableEventsLogging,
                         _eventInterceptorsProcessor,
                         batchSize,
                         applyTimeoutInSeconds * 1000,
