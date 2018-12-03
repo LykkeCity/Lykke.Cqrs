@@ -31,7 +31,6 @@ namespace Lykke.Cqrs
         internal CommandInterceptorsQueue CommandInterceptorsQueue { get; }
         internal EventInterceptorsQueue EventInterceptorsQueue { get; }
         internal IDependencyResolver DependencyResolver { get; }
-        internal bool EnableInputMessagesLogging { get; }
 
         public RouteMap DefaultRouteMap { get; }
 
@@ -48,7 +47,6 @@ namespace Lykke.Cqrs
                 messagingEngine,
                 new DefaultEndpointProvider(),
                 false,
-                true,
                 registrations)
         {
         }
@@ -65,7 +63,6 @@ namespace Lykke.Cqrs
                 messagingEngine,
                 endpointProvider,
                 false,
-                true,
                 registrations)
         {
         }
@@ -83,7 +80,6 @@ namespace Lykke.Cqrs
                 messagingEngine,
                 endpointProvider,
                 false,
-                true,
                 registrations)
         {
         }
@@ -95,26 +91,6 @@ namespace Lykke.Cqrs
             IMessagingEngine messagingEngine,
             IEndpointProvider endpointProvider,
             bool createMissingEndpoints,
-            params IRegistration[] registrations)
-            : this(
-                log,
-                dependencyResolver,
-                messagingEngine,
-                endpointProvider,
-                createMissingEndpoints,
-                true,
-                registrations)
-        {
-        }
-
-        [Obsolete]
-        public CqrsEngine(
-            ILog log,
-            IDependencyResolver dependencyResolver,
-            IMessagingEngine messagingEngine,
-            IEndpointProvider endpointProvider,
-            bool createMissingEndpoints,
-            bool enableInputMessagesLogging,
             params IRegistration[] registrations)
         {
             _log = log;
@@ -125,7 +101,6 @@ namespace Lykke.Cqrs
             _endpointProvider = endpointProvider;
             Contexts = new List<Context>();
             DefaultRouteMap = new RouteMap("default");
-            EnableInputMessagesLogging = enableInputMessagesLogging;
             CommandInterceptorsQueue = new CommandInterceptorsQueue();
             EventInterceptorsQueue = new EventInterceptorsQueue();
 
@@ -144,7 +119,6 @@ namespace Lykke.Cqrs
                 messagingEngine,
                 new DefaultEndpointProvider(),
                 false,
-                true,
                 registrations)
         {
         }
@@ -160,7 +134,6 @@ namespace Lykke.Cqrs
                 messagingEngine,
                 endpointProvider,
                 false,
-                true,
                 registrations)
         {
         }
@@ -177,7 +150,6 @@ namespace Lykke.Cqrs
                 messagingEngine,
                 endpointProvider,
                 false,
-                true,
                 registrations)
         {
         }
@@ -188,25 +160,6 @@ namespace Lykke.Cqrs
             IMessagingEngine messagingEngine,
             IEndpointProvider endpointProvider,
             bool createMissingEndpoints,
-            params IRegistration[] registrations)
-            : this(
-                logFactory,
-                dependencyResolver,
-                messagingEngine,
-                endpointProvider,
-                createMissingEndpoints,
-                true,
-                registrations)
-        {
-        }
-
-        public CqrsEngine(
-            ILogFactory logFactory,
-            IDependencyResolver dependencyResolver,
-            IMessagingEngine messagingEngine,
-            IEndpointProvider endpointProvider,
-            bool createMissingEndpoints,
-            bool enableInputMessagesLogging,
             params IRegistration[] registrations)
         {
             _log = logFactory.CreateLog(this);
@@ -218,7 +171,6 @@ namespace Lykke.Cqrs
             _endpointProvider = endpointProvider;
             Contexts = new List<Context>();
             DefaultRouteMap = new RouteMap("default");
-            EnableInputMessagesLogging = enableInputMessagesLogging;
             CommandInterceptorsQueue = new CommandInterceptorsQueue();
             EventInterceptorsQueue = new EventInterceptorsQueue();
 
@@ -232,13 +184,11 @@ namespace Lykke.Cqrs
                     _logFactory,
                     name,
                     CommandInterceptorsQueue,
-                    EnableInputMessagesLogging,
                     failedCommandRetryDelay)
                 : new CommandDispatcher(
                     _log,
                     name,
                     CommandInterceptorsQueue,
-                    EnableInputMessagesLogging,
                     failedCommandRetryDelay);
         }
 
@@ -248,13 +198,11 @@ namespace Lykke.Cqrs
                 ? new EventDispatcher(
                     _logFactory,
                     name,
-                    EventInterceptorsQueue,
-                    EnableInputMessagesLogging)
+                    EventInterceptorsQueue)
                 : new EventDispatcher(
                     _log,
                     name,
-                    EventInterceptorsQueue,
-                    EnableInputMessagesLogging);
+                    EventInterceptorsQueue);
         }
 
         public void StartPublishers()
