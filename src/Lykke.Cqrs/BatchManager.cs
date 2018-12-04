@@ -180,7 +180,7 @@ namespace Lykke.Cqrs
             catch (Exception ex)
             {
                 _log.WriteError(
-                    "EventDispatcher.DoBatchHandle",
+                    $"{nameof(EventDispatcher)}.{nameof(DoBatchHandle)}",
                     "Failed to handle events batch of type " + origin.EventType.Name,
                     ex);
                 foreach (var result in results)
@@ -225,7 +225,7 @@ namespace Lykke.Cqrs
             catch (Exception ex)
             {
                 _log.WriteError(
-                    "EventDispatcher.DoHandle",
+                    $"{nameof(EventDispatcher)}.{nameof(DoHandle)}",
                     "Failed to handle events batch of type " + origin.EventType.Name,
                     ex);
                 foreach (var result in results)
