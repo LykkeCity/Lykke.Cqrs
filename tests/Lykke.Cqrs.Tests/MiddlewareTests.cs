@@ -176,7 +176,7 @@ namespace Lykke.Cqrs.Tests
 
             var eventLoggingInterceptor = new EventLoggingInterceptor(
                 _logFactory,
-                new Dictionary<Type, Action<ILog, object, object>>
+                new Dictionary<Type, EventLoggingDelegate>
                 {
                     { typeof(string), (l, h, e) => ++eventLoggedCount }
                 });
@@ -211,7 +211,7 @@ namespace Lykke.Cqrs.Tests
         {
             var eventLoggingInterceptor = new EventLoggingInterceptor(
                 _logFactory,
-                new Dictionary<Type, Action<ILog, object, object>>
+                new Dictionary<Type, EventLoggingDelegate>
                 {
                     { typeof(string), null }
                 });
@@ -289,7 +289,7 @@ namespace Lykke.Cqrs.Tests
             int commandLoggedCount = 0;
             var commandLoggingInterceptor = new CommandLoggingInterceptor(
                 _logFactory,
-                new Dictionary<Type, Action<ILog, object, object>>
+                new Dictionary<Type, CommandLoggingDelegate>
                 {
                     {  typeof(int), (l, h, c) => ++commandLoggedCount }
                 });
@@ -326,7 +326,7 @@ namespace Lykke.Cqrs.Tests
         {
             var commandLoggingInterceptor = new CommandLoggingInterceptor(
                 _logFactory,
-                new Dictionary<Type, Action<ILog, object, object>>
+                new Dictionary<Type, CommandLoggingDelegate>
                 {
                     { typeof(int), null }
                 });
