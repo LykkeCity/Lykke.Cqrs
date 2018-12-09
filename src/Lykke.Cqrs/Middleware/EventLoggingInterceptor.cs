@@ -12,7 +12,7 @@ namespace Lykke.Cqrs.Middleware
     /// <summary>
     /// Logging interceptor for events.
     /// </summary>
-    public class EventLoggingInterceptor : IEventInterceptor
+    public sealed class EventLoggingInterceptor : IEventInterceptor
     {
         private readonly ILog _log;
         private readonly Dictionary<Type, EventLoggingDelegate> _customLoggingActionsMap;
@@ -39,25 +39,14 @@ namespace Lykke.Cqrs.Middleware
         /// <inheritdoc cref="IEventInterceptor"/>
         public Task<CommandHandlingResult> InterceptAsync(IEventInterceptionContext context)
         {
+            var eventType = context.Event.GetType();
             EventLoggingDelegate loggingAction = null;
-            if (_customLoggingActionsMap?.TryGetValue(context.Event.GetType(), out loggingAction) ?? false)
+            if (_customLoggingActionsMap?.TryGetValue(eventType, out loggingAction) ?? false)
                 loggingAction?.Invoke(_log, context.HandlerObject, context.Event);
             else
-                DefaultLog(_log, context.HandlerObject, context.Event);
+                _log.WriteInfo(context.HandlerObject.GetType().Name, context.Event, eventType.Name);
 
             return Task.FromResult(CommandHandlingResult.Ok());
-        }
-
-        /// <summary>
-        /// Default logging for events.
-        /// </summary>
-        /// <param name="log">ILog instance.</param>
-        /// <param name="handlerObject">Event handler instance.</param>
-        /// <param name="event">Event.</param>
-        /// <remarks>This could be used in case some custom logging interceptor is implemented for default cases.</remarks>
-        public static void DefaultLog(ILog log, object handlerObject, object @event)
-        {
-            log.WriteInfo(handlerObject.GetType().Name, @event, @event.GetType().Name);
         }
     }
 }

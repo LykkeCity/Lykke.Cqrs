@@ -12,7 +12,7 @@ namespace Lykke.Cqrs.Middleware
     /// <summary>
     /// Logging interceptor for commands.
     /// </summary>
-    public class CommandLoggingInterceptor : ICommandInterceptor
+    public sealed class CommandLoggingInterceptor : ICommandInterceptor
     {
         private readonly ILog _log;
         private readonly Dictionary<Type, CommandLoggingDelegate> _customLoggingActionsMap;
@@ -39,25 +39,14 @@ namespace Lykke.Cqrs.Middleware
         /// <inheritdoc cref="ICommandInterceptor"/>
         public Task<CommandHandlingResult> InterceptAsync(ICommandInterceptionContext context)
         {
+            var commandType = context.Command.GetType();
             CommandLoggingDelegate loggingAction = null;
-            if (_customLoggingActionsMap?.TryGetValue(context.Command.GetType(), out loggingAction) ?? false)
+            if (_customLoggingActionsMap?.TryGetValue(commandType, out loggingAction) ?? false)
                 loggingAction?.Invoke(_log, context.HandlerObject, context.Command);
             else
-                DefaultLog(_log, context.HandlerObject, context.Command);
+                _log.WriteInfo(context.HandlerObject.GetType().Name, context.Command, commandType.Name);
 
             return Task.FromResult(CommandHandlingResult.Ok());
-        }
-
-        /// <summary>
-        /// Default logging for commands.
-        /// </summary>
-        /// <param name="log">ILog instance.</param>
-        /// <param name="handlerObject">Command handler instance.</param>
-        /// <param name="command">Command.</param>
-        /// <remarks>This could be used in case some custom logging interceptor is implemented for default cases.</remarks>
-        public static void DefaultLog(ILog log, object handlerObject, object command)
-        {
-            log.WriteInfo(handlerObject.GetType().Name, command, command.GetType().Name);
         }
     }
 }
