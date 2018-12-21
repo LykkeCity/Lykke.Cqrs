@@ -46,7 +46,7 @@ namespace Lykke.Cqrs.Middleware
             else
                 _log.WriteInfo(context.HandlerObject.GetType().Name, context.Event, eventType.Name);
 
-            return Task.FromResult(CommandHandlingResult.Ok());
+            return context.InvokeNextAsync();
         }
     }
 }

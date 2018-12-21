@@ -284,6 +284,36 @@ namespace Lykke.Cqrs.Tests
         }
 
         [Test]
+        public void EventLoggingInterceptorDoesNotBreakProcessingChain()
+        {
+            var eventLoggingInterceptor = new EventLoggingInterceptor(_logFactory);
+            var simpleEventInterceptor = new EventSimpleInterceptor();
+
+            using (var messagingEngine = new MessagingEngine(
+                _logFactory,
+                new TransportResolver(new Dictionary<string, TransportInfo>
+                {
+                    {"InMemory", new TransportInfo("none", "none", "none", null)}
+                })))
+            {
+                using (var engine = new CqrsEngine(
+                    _logFactory,
+                    messagingEngine,
+                    Register.DefaultEndpointResolver(new InMemoryEndpointResolver()),
+                    Register.EventInterceptors(eventLoggingInterceptor, simpleEventInterceptor),
+                    Register.Saga<TestSaga>("test1")
+                        .ListeningEvents(typeof(string)).From("lykke-wallet").On("lykke-wallet-events")))
+                {
+                    engine.StartSubscribers();
+                    messagingEngine.Send("1", new Endpoint("InMemory", "lykke-wallet-events", serializationFormat: SerializationFormat.Json));
+                    Thread.Sleep(1000);
+
+                    Assert.True(simpleEventInterceptor.Intercepted);
+                }
+            }
+        }
+
+        [Test]
         public void CommandLoggingInterceptorTest()
         {
             int commandLoggedCount = 0;
@@ -398,6 +428,38 @@ namespace Lykke.Cqrs.Tests
                         var output = writer.ToString();
                         Assert.IsFalse(output.IsNullOrEmpty(), "Command was not logged");
                     }
+                }
+            }
+        }
+
+        [Test]
+        public void CommandLoggingInterceptorDoesNotBreakProcessingChain()
+        {
+            var commandLoggingInterceptor = new CommandLoggingInterceptor(_logFactory);
+            var commandSimpleInterceptor = new CommandSimpleInterceptor();
+            var commandsHandler = new CommandsHandler();
+
+            using (var messagingEngine = new MessagingEngine(
+                _logFactory,
+                new TransportResolver(new Dictionary<string, TransportInfo>
+                {
+                    {"InMemory", new TransportInfo("none", "none", "none", null)}
+                })))
+            {
+                using (var engine = new CqrsEngine(
+                    _logFactory,
+                    messagingEngine,
+                    Register.DefaultEndpointResolver(new InMemoryEndpointResolver()),
+                    Register.CommandInterceptors(commandLoggingInterceptor, commandSimpleInterceptor),
+                    Register.BoundedContext("test1")
+                        .ListeningCommands(typeof(int)).On("lykke-wallet-events")
+                        .WithCommandsHandler(commandsHandler)))
+                {
+                    engine.StartSubscribers();
+                    messagingEngine.Send(1, new Endpoint("InMemory", "lykke-wallet-events", serializationFormat: SerializationFormat.Json));
+                    Thread.Sleep(1000);
+
+                    Assert.True(commandSimpleInterceptor.Intercepted);
                 }
             }
         }
