@@ -430,12 +430,13 @@ namespace Lykke.Cqrs
             foreach (var endpointError in endpointsErrorsDict)
             {
                 string messagePattern = endpointMessagesDict[endpointError.Key];
-                string message = string.Format(
-                    messagePattern,
-                    string.IsNullOrWhiteSpace(endpointError.Value)
-                        ? "OK"
-                        : $"ERROR: {endpointError.Value}");
-                _log.WriteInfo(nameof(CqrsEngine), nameof(EnsureEndpoints), message);
+                if (string.IsNullOrWhiteSpace(endpointError.Value))
+                    _log.WriteInfo(nameof(CqrsEngine), nameof(EnsureEndpoints), string.Format(messagePattern, "OK"));
+                else
+                    _log.WriteError(
+                        nameof(CqrsEngine),
+                        nameof(EnsureEndpoints),
+                        new InvalidOperationException(string.Format(messagePattern, $"ERROR: {endpointError.Value}")));
             }
 
             if (!allEndpointsAreValid)
