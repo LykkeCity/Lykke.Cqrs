@@ -3,10 +3,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using Castle.Core.Internal;
-using Common.Log;
 using Lykke.Common.Log;
 using Lykke.Cqrs.Configuration;
-using Lykke.Cqrs.Middleware;
+using Lykke.Cqrs.Middleware.Logging;
 using Lykke.Cqrs.Tests.HelperClasses;
 using Lykke.Logs;
 using Lykke.Logs.Loggers.LykkeConsole;
@@ -174,7 +173,7 @@ namespace Lykke.Cqrs.Tests
         {
             int eventLoggedCount = 0;
 
-            var eventLoggingInterceptor = new EventLoggingInterceptor(
+            var eventLoggingInterceptor = new CustomEventLoggingInterceptor(
                 _logFactory,
                 new Dictionary<Type, EventLoggingDelegate>
                 {
@@ -209,7 +208,7 @@ namespace Lykke.Cqrs.Tests
         [Test]
         public void EventLoggingInterceptorTestForNoLogging()
         {
-            var eventLoggingInterceptor = new EventLoggingInterceptor(
+            var eventLoggingInterceptor = new CustomEventLoggingInterceptor(
                 _logFactory,
                 new Dictionary<Type, EventLoggingDelegate>
                 {
@@ -250,7 +249,7 @@ namespace Lykke.Cqrs.Tests
         [Test]
         public void EventLoggingInterceptorTestForDefaultLogging()
         {
-            var eventLoggingInterceptor = new EventLoggingInterceptor(_logFactory);
+            var eventLoggingInterceptor = new DefaultEventLoggingInterceptor(_logFactory);
 
             using (var messagingEngine = new MessagingEngine(
                 _logFactory,
@@ -286,7 +285,7 @@ namespace Lykke.Cqrs.Tests
         [Test]
         public void EventLoggingInterceptorDoesNotBreakProcessingChain()
         {
-            var eventLoggingInterceptor = new EventLoggingInterceptor(_logFactory);
+            var eventLoggingInterceptor = new DefaultEventLoggingInterceptor(_logFactory);
             var simpleEventInterceptor = new EventSimpleInterceptor();
 
             using (var messagingEngine = new MessagingEngine(
@@ -317,7 +316,7 @@ namespace Lykke.Cqrs.Tests
         public void CommandLoggingInterceptorTest()
         {
             int commandLoggedCount = 0;
-            var commandLoggingInterceptor = new CommandLoggingInterceptor(
+            var commandLoggingInterceptor = new CustomCommandLoggingInterceptor(
                 _logFactory,
                 new Dictionary<Type, CommandLoggingDelegate>
                 {
@@ -354,7 +353,7 @@ namespace Lykke.Cqrs.Tests
         [Test]
         public void CommandLoggingInterceptorTestForNoLogging()
         {
-            var commandLoggingInterceptor = new CommandLoggingInterceptor(
+            var commandLoggingInterceptor = new CustomCommandLoggingInterceptor(
                 _logFactory,
                 new Dictionary<Type, CommandLoggingDelegate>
                 {
@@ -397,7 +396,7 @@ namespace Lykke.Cqrs.Tests
         [Test]
         public void CommandLoggingInterceptorTestForDefaultLogging()
         {
-            var commandLoggingInterceptor = new CommandLoggingInterceptor(_logFactory);
+            var commandLoggingInterceptor = new DefaultCommandLoggingInterceptor(_logFactory);
             var commandsHandler = new CommandsHandler();
 
             using (var messagingEngine = new MessagingEngine(
@@ -435,7 +434,7 @@ namespace Lykke.Cqrs.Tests
         [Test]
         public void CommandLoggingInterceptorDoesNotBreakProcessingChain()
         {
-            var commandLoggingInterceptor = new CommandLoggingInterceptor(_logFactory);
+            var commandLoggingInterceptor = new DefaultCommandLoggingInterceptor(_logFactory);
             var commandSimpleInterceptor = new CommandSimpleInterceptor();
             var commandsHandler = new CommandsHandler();
 
