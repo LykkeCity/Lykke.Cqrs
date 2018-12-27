@@ -1,5 +1,4 @@
-﻿using System.Threading.Tasks;
-using JetBrains.Annotations;
+﻿using JetBrains.Annotations;
 
 namespace Lykke.Cqrs.Middleware.Logging
 {
@@ -14,7 +13,6 @@ namespace Lykke.Cqrs.Middleware.Logging
         /// </summary>
         /// <param name="handler">Event handler instance.</param>
         /// <param name="event">Event object.</param>
-        /// <returns>Task for <see cref="CommandHandlingResult"/></returns>
-        Task<CommandHandlingResult> Log(object handler, object @event);
+        void Log(object handler, object @event);
     }
 }

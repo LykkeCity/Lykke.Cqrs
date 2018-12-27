@@ -8,7 +8,7 @@ using Lykke.Cqrs.Abstractions.Middleware;
 
 namespace Lykke.Cqrs.Middleware.Logging
 {
-    public delegate void CommandLoggingDelegate(ICommandLogger commandLogger, object handlerObject, object command);
+    public delegate void CommandLoggingDelegate(ICommandLogger defaultLogger, object handlerObject, object command);
 
     /// <summary>
     /// Command interceptor for custom logging.
@@ -16,7 +16,7 @@ namespace Lykke.Cqrs.Middleware.Logging
     [PublicAPI]
     public sealed class CustomCommandLoggingInterceptor : ICommandInterceptor
     {
-        private readonly ICommandLogger _commandLogger;
+        private readonly ICommandLogger _defaultLogger;
         private readonly Dictionary<Type, CommandLoggingDelegate> _customLoggingActionsMap;
 
         /// <summary>C-tor for old logging.</summary>
@@ -37,11 +37,11 @@ namespace Lykke.Cqrs.Middleware.Logging
         }
 
         /// <summary>C-tor.</summary>
-        /// <param name="commandLogger">Command logger for default logging.</param>
+        /// <param name="defaultLogger">Command logger for default logging.</param>
         /// <param name="customLoggingActionsMap">Custom logging actions map.</param>
-        public CustomCommandLoggingInterceptor(ICommandLogger commandLogger, Dictionary<Type, CommandLoggingDelegate> customLoggingActionsMap)
+        public CustomCommandLoggingInterceptor(ICommandLogger defaultLogger, Dictionary<Type, CommandLoggingDelegate> customLoggingActionsMap)
         {
-            _commandLogger = commandLogger;
+            _defaultLogger = defaultLogger;
             _customLoggingActionsMap = customLoggingActionsMap ?? throw new ArgumentNullException(nameof(customLoggingActionsMap));
         }
 
@@ -49,9 +49,9 @@ namespace Lykke.Cqrs.Middleware.Logging
         public Task<CommandHandlingResult> InterceptAsync(ICommandInterceptionContext context)
         {
             if (_customLoggingActionsMap.TryGetValue(context.Command.GetType(), out var customLoggingAction))
-                customLoggingAction?.Invoke(_commandLogger, context.HandlerObject, context.Command);
+                customLoggingAction?.Invoke(_defaultLogger, context.HandlerObject, context.Command);
             else
-                _commandLogger.Log(context.HandlerObject, context.Command);
+                _defaultLogger.Log(context.HandlerObject, context.Command);
 
             return context.InvokeNextAsync();
         }

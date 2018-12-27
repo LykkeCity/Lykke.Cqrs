@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Threading.Tasks;
 using Common.Log;
 using JetBrains.Annotations;
 using Lykke.Common.Log;
@@ -28,11 +27,9 @@ namespace Lykke.Cqrs.Middleware.Logging
         }
 
         /// <inheritdoc cref="ICommandLogger"/>
-        public Task<CommandHandlingResult> Log(object handler, object command)
+        public void Log(object handler, object command)
         {
             _log.WriteInfo(handler.GetType().Name, command, command.GetType().Name);
-
-            return Task.FromResult(CommandHandlingResult.Ok());
         }
     }
 }

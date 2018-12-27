@@ -8,7 +8,7 @@ using Lykke.Cqrs.Abstractions.Middleware;
 
 namespace Lykke.Cqrs.Middleware.Logging
 {
-    public delegate void EventLoggingDelegate(IEventLogger log, object handlerObject, object @event);
+    public delegate void EventLoggingDelegate(IEventLogger defaultLogger, object handlerObject, object @event);
 
     /// <summary>
     /// Event interceptor for custom logging.
@@ -16,7 +16,7 @@ namespace Lykke.Cqrs.Middleware.Logging
     [PublicAPI]
     public sealed class CustomEventLoggingInterceptor : IEventInterceptor
     {
-        private readonly IEventLogger _eventLogger;
+        private readonly IEventLogger _defaultLogger;
         private readonly Dictionary<Type, EventLoggingDelegate> _customLoggingActionsMap;
 
         /// <summary>C-tor for old logging.</summary>
@@ -37,11 +37,11 @@ namespace Lykke.Cqrs.Middleware.Logging
         }
 
         /// <summary>C-tor.</summary>
-        /// <param name="eventLogger">Event logger for default logging.</param>
+        /// <param name="defaultLogger">Event logger for default logging.</param>
         /// <param name="customLoggingActionsMap">Custom logging actions map.</param>
-        public CustomEventLoggingInterceptor(IEventLogger eventLogger, Dictionary<Type, EventLoggingDelegate> customLoggingActionsMap)
+        public CustomEventLoggingInterceptor(IEventLogger defaultLogger, Dictionary<Type, EventLoggingDelegate> customLoggingActionsMap)
         {
-            _eventLogger = eventLogger;
+            _defaultLogger = defaultLogger;
             _customLoggingActionsMap = customLoggingActionsMap ?? throw new ArgumentNullException(nameof(customLoggingActionsMap));
         }
 
@@ -49,9 +49,9 @@ namespace Lykke.Cqrs.Middleware.Logging
         public Task<CommandHandlingResult> InterceptAsync(IEventInterceptionContext context)
         {
             if (_customLoggingActionsMap.TryGetValue(context.Event.GetType(), out var customLoggingAction))
-                customLoggingAction?.Invoke(_eventLogger, context.HandlerObject, context.Event);
+                customLoggingAction?.Invoke(_defaultLogger, context.HandlerObject, context.Event);
             else
-                _eventLogger.Log(context.HandlerObject, context.Event);
+                _defaultLogger.Log(context.HandlerObject, context.Event);
 
             return context.InvokeNextAsync();
         }
