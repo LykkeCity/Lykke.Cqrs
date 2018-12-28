@@ -22,7 +22,6 @@ namespace Lykke.Cqrs
         private readonly ILog _log;
         private readonly CommandInterceptorsQueue _commandInterceptorsProcessor;
         private readonly MethodInfo _getAwaiterInfo;
-        private readonly bool _enableCommandsLogging;
         private readonly long _failedCommandRetryDelay;
 
         internal const long FailedCommandRetryDelay = 60000;
@@ -32,14 +31,12 @@ namespace Lykke.Cqrs
             ILog log,
             string boundedContext,
             CommandInterceptorsQueue commandInterceptorsProcessor,
-            bool enableCommandsLogging,
             long failedCommandRetryDelay = FailedCommandRetryDelay)
         {
             _log = log;
             _commandInterceptorsProcessor = commandInterceptorsProcessor;
             _failedCommandRetryDelay = failedCommandRetryDelay;
             _boundedContext = boundedContext;
-            _enableCommandsLogging = enableCommandsLogging;
 
             var taskMethods = typeof(Task<CommandHandlingResult>).GetMethods(BindingFlags.Public | BindingFlags.Instance);
             var awaiterResultType = typeof(TaskAwaiter<CommandHandlingResult>);
@@ -50,14 +47,12 @@ namespace Lykke.Cqrs
             ILogFactory logFactory,
             string boundedContext,
             CommandInterceptorsQueue commandInterceptorsProcessor = null,
-            bool enableCommandsLogging = true,
             long failedCommandRetryDelay = 60000)
         {
             _log = logFactory.CreateLog(this);
             _commandInterceptorsProcessor = commandInterceptorsProcessor ?? new CommandInterceptorsQueue();
             _failedCommandRetryDelay = failedCommandRetryDelay;
             _boundedContext = boundedContext;
-            _enableCommandsLogging = enableCommandsLogging;
 
             var taskMethods = typeof(Task<CommandHandlingResult>).GetMethods(BindingFlags.Public | BindingFlags.Instance);
             var awaiterResultType = typeof(TaskAwaiter<CommandHandlingResult>);
@@ -263,9 +258,6 @@ namespace Lykke.Cqrs
             string route)
         {
             string commandType = command?.GetType().Name ?? "Unknown command type";
-            if (_enableCommandsLogging)
-                _log.WriteInfoAsync(commandHandlerInfo.HandlerTypeName, commandType, command?.ToJson(), "Command is about to be handled")
-                    .GetAwaiter().GetResult();
 
             var telemtryOperation = TelemetryHelper.InitTelemetryOperation(
                 "Cqrs handle command",
@@ -286,8 +278,7 @@ namespace Lykke.Cqrs
             }
             catch (Exception e)
             {
-                _log.WriteErrorAsync(commandHandlerInfo.HandlerTypeName, commandType, command?.ToJson() ?? "", e)
-                    .GetAwaiter().GetResult();
+                _log.WriteError(commandHandlerInfo.HandlerTypeName, commandType, e);
 
                 acknowledge(_failedCommandRetryDelay, false);
 
