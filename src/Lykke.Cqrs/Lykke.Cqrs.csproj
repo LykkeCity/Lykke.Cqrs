@@ -24,7 +24,7 @@
 
   <ItemGroup>
     <PackageReference Include="Castle.Windsor" Version="4.1.0" />
-    <PackageReference Include="Lykke.Messaging" Version="6.3.0" />
+    <PackageReference Include="Lykke.Messaging" Version="6.3.1" />
     <PackageReference Include="Microsoft.ApplicationInsights" Version="2.8.1" />
     <PackageReference Include="protobuf-net" Version="2.3.14" />
     <PackageReference Include="SourceLink.Create.CommandLine" Version="2.8.3" PrivateAssets="All" />
